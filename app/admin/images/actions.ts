@@ -119,7 +119,7 @@ function errorRedirect(message: string) {
 
 function revalidateAdmin() {
   revalidatePath("/admin/images");
-  revalidatePath("/admin");
+  revalidatePath("/admin/dashboard");
 }
 
 export async function createImageAction(formData: FormData) {
@@ -173,6 +173,31 @@ export async function deleteImageAction(formData: FormData) {
 
   try {
     const id = parseId(formData.get("id"));
+    const { data: existingRow, error: readError } = await supabase
+      .from("images")
+      .select("storage_path")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (readError) {
+      throw new Error(readError.message);
+    }
+
+    const storagePath =
+      typeof existingRow?.storage_path === "string"
+        ? existingRow.storage_path.trim()
+        : "";
+
+    if (storagePath) {
+      const { error: storageError } = await supabase.storage
+        .from("images")
+        .remove([storagePath]);
+
+      if (storageError) {
+        throw new Error(storageError.message);
+      }
+    }
+
     const { error } = await supabase.from("images").delete().eq("id", id);
 
     if (error) {

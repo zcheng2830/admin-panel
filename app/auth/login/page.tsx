@@ -14,6 +14,10 @@ function reasonMessage(reason?: string) {
     return "This account is signed in but is not marked as superadmin in profiles.";
   }
 
+  if (reason === "google_required") {
+    return "This admin area only accepts Google sign-in sessions.";
+  }
+
   if (reason === "auth_required") {
     return "Please sign in with Google to continue.";
   }

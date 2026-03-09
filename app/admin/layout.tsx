@@ -6,8 +6,8 @@ import { requireSuperadmin } from "@/lib/auth/guards";
 import { SignOutButton } from "./components/sign-out-button";
 
 const NAV_LINKS = [
-  { href: "/admin", label: "Overview", subtitle: "Activity & trends" },
-  { href: "/admin/users", label: "Users", subtitle: "Profiles (read)" },
+  { href: "/admin/dashboard", label: "Dashboard", subtitle: "Activity & trends" },
+  { href: "/admin/users", label: "Users", subtitle: "Profiles (manage)" },
   {
     href: "/admin/images",
     label: "Images",

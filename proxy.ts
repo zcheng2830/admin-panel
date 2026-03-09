@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { isGoogleUser } from "@/lib/auth/google";
 import { getSupabaseCredentials } from "@/lib/supabase/env";
 
 function loginRedirect(request: NextRequest, reason?: string) {
@@ -12,14 +13,6 @@ function loginRedirect(request: NextRequest, reason?: string) {
     target.searchParams.set("reason", reason);
   }
 
-  return NextResponse.redirect(target);
-}
-
-function unauthorizedRedirect(request: NextRequest) {
-  const target = request.nextUrl.clone();
-  target.pathname = "/not-authorized";
-  target.search = "";
-  target.searchParams.set("from", request.nextUrl.pathname);
   return NextResponse.redirect(target);
 }
 
@@ -59,14 +52,8 @@ export async function proxy(request: NextRequest) {
     return loginRedirect(request, "auth_required");
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("is_superadmin")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileError || !profile?.is_superadmin) {
-    return unauthorizedRedirect(request);
+  if (!isGoogleUser(user)) {
+    return loginRedirect(request, "google_required");
   }
 
   return response;

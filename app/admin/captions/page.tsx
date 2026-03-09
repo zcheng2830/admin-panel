@@ -16,10 +16,34 @@ function dayKey(value: unknown) {
   return date.toISOString().slice(0, 10);
 }
 
-export default async function AdminCaptionsPage() {
+type CaptionsPageProps = {
+  searchParams: Promise<{ image_id?: string }>;
+};
+
+function sanitizeImageId(value?: string) {
+  if (!value) {
+    return "";
+  }
+
+  return value.replace(/[^a-zA-Z0-9_-]/g, "").trim();
+}
+
+export default async function AdminCaptionsPage({ searchParams }: CaptionsPageProps) {
+  const params = await searchParams;
+  const imageId = sanitizeImageId(params.image_id);
   const { supabase } = await requireSuperadmin();
 
-  const { data, error } = await supabase.from("captions").select("*").limit(700);
+  let query = supabase
+    .from("captions")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(700);
+
+  if (imageId) {
+    query = query.eq("image_id", imageId);
+  }
+
+  const { data, error } = await query;
   const rows = asRows(data);
 
   const withText = rows.filter((row) => captionTextLength(row) > 0);
@@ -64,6 +88,20 @@ export default async function AdminCaptionsPage() {
         <p className="mt-3 text-sm text-slate-600">
           {rows.length} rows loaded. Average caption length: {averageLength.toFixed(1)} characters.
         </p>
+        <form className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            name="image_id"
+            defaultValue={imageId}
+            placeholder="Filter by image_id"
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 sm:max-w-sm"
+          />
+          <button
+            type="submit"
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+          >
+            Filter
+          </button>
+        </form>
         {error ? (
           <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
             {error.message}

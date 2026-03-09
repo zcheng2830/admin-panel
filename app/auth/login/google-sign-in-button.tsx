@@ -16,19 +16,30 @@ export function GoogleSignInButton({ nextPath }: GoogleSignInButtonProps) {
     setIsLoading(true);
     setError(null);
 
-    const supabase = getSupabaseBrowserClient();
-    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
+    try {
+      const supabase = getSupabaseBrowserClient();
+      // Always use the runtime origin to prevent stale env values from redirecting to
+      // a different domain in OAuth flows.
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
-    const { error: signInError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo,
-      },
-    });
+      const { error: signInError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+        },
+      });
 
-    if (signInError) {
+      if (signInError) {
+        setIsLoading(false);
+        setError(signInError.message);
+      }
+    } catch (unknownError) {
       setIsLoading(false);
-      setError(signInError.message);
+      setError(
+        unknownError instanceof Error
+          ? unknownError.message
+          : "Google sign-in failed.",
+      );
     }
   };
 

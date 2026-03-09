@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { SignOutButton } from "@/app/admin/components/sign-out-button";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type NotAuthorizedPageProps = {
@@ -34,7 +35,22 @@ export default async function NotAuthorizedPage({
     redirect(`/auth/login?reason=auth_required&next=${encodeURIComponent(fromPath)}`);
   }
 
-  const { data: profile } = await supabase
+  let adminClient = supabase;
+
+  try {
+    adminClient = createSupabaseServiceRoleClient();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.toLowerCase().includes("service role key")
+    ) {
+      adminClient = supabase;
+    } else {
+      throw error;
+    }
+  }
+
+  const { data: profile } = await adminClient
     .from("profiles")
     .select("is_superadmin")
     .eq("id", user.id)

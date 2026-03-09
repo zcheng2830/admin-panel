@@ -104,7 +104,7 @@ function errorRedirect(slug: string, message: string) {
 
 function revalidateResource(slug: string) {
   revalidatePath(`/admin/${slug}`);
-  revalidatePath("/admin");
+  revalidatePath("/admin/dashboard");
 }
 
 export async function createResourceAction(formData: FormData) {
