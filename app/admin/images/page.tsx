@@ -1,7 +1,12 @@
 import { asRows, pickFirstString } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
-import { createImageAction, deleteImageAction, updateImageAction } from "./actions";
+import {
+  createImageAction,
+  deleteImageAction,
+  updateImageAction,
+  uploadImageAction,
+} from "./actions";
 
 type ImagesPageProps = {
   searchParams: Promise<{ status?: string; message?: string }>;
@@ -22,6 +27,14 @@ function feedback(status?: string, message?: string) {
 
   if (status === "deleted") {
     return { tone: "success", text: "Image row deleted." };
+  }
+
+  if (status === "uploaded") {
+    return { tone: "success", text: "Image file uploaded to storage." };
+  }
+
+  if (status === "uploaded_created") {
+    return { tone: "success", text: "Image file uploaded and image row created." };
   }
 
   return {
@@ -76,6 +89,71 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
           {banner.text}
         </section>
       ) : null}
+
+      <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
+        <h3 className="text-lg font-semibold text-slate-900">Upload New Image File</h3>
+        <p className="mt-2 text-sm text-slate-600">
+          Upload directly to Supabase Storage. Optionally create a new `images` row from the upload.
+        </p>
+        <form action={uploadImageAction} encType="multipart/form-data" className="mt-4 space-y-3">
+          <input
+            type="file"
+            name="file"
+            accept="image/*"
+            required
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
+              Bucket
+              <input
+                name="bucket"
+                defaultValue="images"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-800"
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
+              Folder
+              <input
+                name="folder"
+                defaultValue="admin-uploads"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-800"
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
+              URL Column
+              <input
+                name="url_column"
+                defaultValue="url"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-800"
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
+              Path Column
+              <input
+                name="path_column"
+                defaultValue="storage_path"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-800"
+              />
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="create_row" defaultChecked className="size-4" />
+            Also create an `images` table row after upload
+          </label>
+          <textarea
+            name="payload"
+            defaultValue={`{\n  "title": "Uploaded from admin"\n}`}
+            className="h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
+          />
+          <button
+            type="submit"
+            className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Upload image
+          </button>
+        </form>
+      </section>
 
       <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-900">Create Image Row</h3>

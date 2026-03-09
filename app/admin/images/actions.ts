@@ -35,8 +35,20 @@ function parseId(raw: FormDataEntryValue | null) {
   return trimmed;
 }
 
-function parsePayload(raw: FormDataEntryValue | null) {
+function parsePayload(raw: FormDataEntryValue | null, allowEmpty = false) {
+  if (raw === null && allowEmpty) {
+    return {};
+  }
+
   if (typeof raw !== "string") {
+    throw new Error("Payload is required.");
+  }
+
+  if (!raw.trim()) {
+    if (allowEmpty) {
+      return {};
+    }
+
     throw new Error("Payload is required.");
   }
 
@@ -58,15 +70,56 @@ function parsePayload(raw: FormDataEntryValue | null) {
     }),
   );
 
-  if (Object.keys(cleaned).length === 0) {
+  if (!allowEmpty && Object.keys(cleaned).length === 0) {
     throw new Error("Payload has no editable columns.");
   }
 
   return cleaned;
 }
 
+function parseOptionalString(raw: FormDataEntryValue | null) {
+  if (typeof raw !== "string") {
+    return "";
+  }
+
+  return raw.trim();
+}
+
+function parseRequiredFile(raw: FormDataEntryValue | null) {
+  if (!(raw instanceof File) || raw.size === 0) {
+    throw new Error("Image file is required.");
+  }
+
+  return raw;
+}
+
+function sanitizeFileName(name: string) {
+  const safe = name.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return safe || "image-upload";
+}
+
+function sanitizeFolder(folder: string) {
+  return folder
+    .split("/")
+    .map((part) => part.replace(/[^a-zA-Z0-9_-]/g, "").trim())
+    .filter(Boolean)
+    .join("/");
+}
+
+function createStoragePath(folder: string, originalFileName: string) {
+  const normalizedFolder = sanitizeFolder(folder);
+  const random = Math.random().toString(36).slice(2, 8);
+  const fileName = `${Date.now()}-${random}-${sanitizeFileName(originalFileName)}`;
+  return normalizedFolder ? `${normalizedFolder}/${fileName}` : fileName;
+}
+
 function errorRedirect(message: string) {
   return `/admin/images?status=error&message=${encodeURIComponent(message)}`;
+}
+
+function revalidateAdmin() {
+  revalidatePath("/admin/images");
+  revalidatePath("/admin");
 }
 
 export async function createImageAction(formData: FormData) {
@@ -82,8 +135,7 @@ export async function createImageAction(formData: FormData) {
       throw new Error(error.message);
     }
 
-    revalidatePath("/admin/images");
-    revalidatePath("/admin");
+    revalidateAdmin();
   } catch (error) {
     target = errorRedirect(errorMessage(error));
   }
@@ -106,8 +158,7 @@ export async function updateImageAction(formData: FormData) {
       throw new Error(error.message);
     }
 
-    revalidatePath("/admin/images");
-    revalidatePath("/admin");
+    revalidateAdmin();
   } catch (error) {
     target = errorRedirect(errorMessage(error));
   }
@@ -128,8 +179,61 @@ export async function deleteImageAction(formData: FormData) {
       throw new Error(error.message);
     }
 
-    revalidatePath("/admin/images");
-    revalidatePath("/admin");
+    revalidateAdmin();
+  } catch (error) {
+    target = errorRedirect(errorMessage(error));
+  }
+
+  redirect(target);
+}
+
+export async function uploadImageAction(formData: FormData) {
+  const { supabase } = await requireSuperadmin();
+  let target = "/admin/images?status=uploaded";
+
+  try {
+    const file = parseRequiredFile(formData.get("file"));
+    const bucket = parseOptionalString(formData.get("bucket")) || "images";
+    const folder = parseOptionalString(formData.get("folder"));
+    const shouldCreateRow = formData.get("create_row") === "on";
+    const urlColumn = parseOptionalString(formData.get("url_column")) || "url";
+    const pathColumn = parseOptionalString(formData.get("path_column"));
+    const storagePath = createStoragePath(folder, file.name);
+
+    const { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(storagePath, file, { upsert: false, contentType: file.type || undefined });
+
+    if (uploadError) {
+      throw new Error(uploadError.message);
+    }
+
+    if (shouldCreateRow) {
+      const payload = parsePayload(formData.get("payload"), true);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+
+      payload[urlColumn] = publicUrl;
+
+      if (pathColumn) {
+        payload[pathColumn] = storagePath;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        throw new Error("Payload has no editable columns for image row creation.");
+      }
+
+      const { error: insertError } = await supabase.from("images").insert(payload);
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+
+      target = "/admin/images?status=uploaded_created";
+    }
+
+    revalidateAdmin();
   } catch (error) {
     target = errorRedirect(errorMessage(error));
   }

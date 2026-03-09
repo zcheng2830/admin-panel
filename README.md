@@ -4,8 +4,12 @@ Next.js admin interface for Supabase data, including:
 
 - `/admin` dashboard with data insights and activity stats
 - `/admin/users` read-only profiles view
-- `/admin/images` create/read/update/delete image rows
+- `/admin/images` create/read/update/delete image rows + storage uploads
 - `/admin/captions` read-only caption explorer
+- Additional resource sections under `/admin/*`:
+  - Read-only: `humor_flavors`, `humor_flavor_steps`, `caption_requests`, `llm_prompt_chains`, `llm_responses`
+  - Read/update: `humor_mix`
+  - CRUD: `example_captions`, `terms`, `caption_examples`, `llm_models`, `llm_providers`, `allowed_signup_domains`, `whitelisted_email_addresses`
 
 All `/admin/*` routes are protected by:
 
@@ -56,4 +60,3 @@ where email = 'your-google-email@example.com';
 ```
 
 After this, sign in with that Google account and you can access `/admin`.
-

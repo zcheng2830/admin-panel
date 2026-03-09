@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { getAdminResources } from "@/lib/admin-resources";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
 import { SignOutButton } from "./components/sign-out-button";
@@ -7,8 +8,17 @@ import { SignOutButton } from "./components/sign-out-button";
 const NAV_LINKS = [
   { href: "/admin", label: "Overview", subtitle: "Activity & trends" },
   { href: "/admin/users", label: "Users", subtitle: "Profiles (read)" },
-  { href: "/admin/images", label: "Images", subtitle: "Create / update / delete" },
+  {
+    href: "/admin/images",
+    label: "Images",
+    subtitle: "Create / read / update / delete + upload",
+  },
   { href: "/admin/captions", label: "Captions", subtitle: "Read & quality checks" },
+  ...getAdminResources().map((resource) => ({
+    href: `/admin/${resource.slug}`,
+    label: resource.label,
+    subtitle: resource.subtitle,
+  })),
 ];
 
 export default async function AdminLayout({
