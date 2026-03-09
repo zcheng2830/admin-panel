@@ -15,6 +15,14 @@ function loginRedirect(request: NextRequest, reason?: string) {
   return NextResponse.redirect(target);
 }
 
+function unauthorizedRedirect(request: NextRequest) {
+  const target = request.nextUrl.clone();
+  target.pathname = "/not-authorized";
+  target.search = "";
+  target.searchParams.set("from", request.nextUrl.pathname);
+  return NextResponse.redirect(target);
+}
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
     request,
@@ -58,7 +66,7 @@ export async function proxy(request: NextRequest) {
     .maybeSingle();
 
   if (profileError || !profile?.is_superadmin) {
-    return loginRedirect(request, "not_superadmin");
+    return unauthorizedRedirect(request);
   }
 
   return response;

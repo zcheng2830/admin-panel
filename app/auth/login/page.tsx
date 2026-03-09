@@ -40,6 +40,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     if (profile?.is_superadmin) {
       redirect(nextPath);
     }
+
+    redirect(`/not-authorized?from=${encodeURIComponent(nextPath)}`);
   }
 
   return (

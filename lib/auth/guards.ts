@@ -20,7 +20,7 @@ export async function requireSuperadmin() {
     .maybeSingle();
 
   if (error || !profile?.is_superadmin) {
-    redirect("/auth/login?reason=not_superadmin");
+    redirect("/not-authorized");
   }
 
   return { supabase, user, profile };
