@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { SignOutButton } from "@/app/admin/components/sign-out-button";
+import { isGoogleUser } from "@/lib/auth/google";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -33,6 +34,11 @@ export default async function NotAuthorizedPage({
 
   if (!user) {
     redirect(`/auth/login?reason=auth_required&next=${encodeURIComponent(fromPath)}`);
+  }
+
+  if (!isGoogleUser(user)) {
+    await supabase.auth.signOut();
+    redirect(`/auth/login?reason=google_required&next=${encodeURIComponent(fromPath)}`);
   }
 
   let adminClient = supabase;

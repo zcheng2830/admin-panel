@@ -1,3 +1,4 @@
+import { PaginationControls } from "@/app/admin/components/pagination-controls";
 import { asRows, pickFirstString } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
@@ -9,7 +10,7 @@ import {
 } from "./actions";
 
 type ImagesPageProps = {
-  searchParams: Promise<{ status?: string; message?: string }>;
+  searchParams: Promise<{ limit?: string; message?: string; page?: string; status?: string }>;
 };
 
 function feedback(status?: string, message?: string) {
@@ -54,12 +55,35 @@ function previewUrl(row: Record<string, unknown>) {
   ]);
 }
 
+function parseNumber(raw: string | undefined, fallback: number, min: number, max: number) {
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(parsed, min), max);
+}
+
 export default async function AdminImagesPage({ searchParams }: ImagesPageProps) {
   const params = await searchParams;
+  const page = parseNumber(params.page, 1, 1, 10_000);
+  const limit = parseNumber(params.limit, 20, 5, 100);
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
   const { supabase } = await requireSuperadmin();
 
-  const { data, error } = await supabase.from("images").select("*").limit(120);
+  const { data, error, count } = await supabase
+    .from("images")
+    .select("*", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to);
   const rows = asRows(data);
+  const totalCount = count ?? rows.length;
 
   const banner = feedback(params.status, params.message);
 
@@ -89,6 +113,14 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
           {banner.text}
         </section>
       ) : null}
+
+      <PaginationControls
+        basePath="/admin/images"
+        page={page}
+        pageSize={limit}
+        totalCount={totalCount}
+        itemLabel="images"
+      />
 
       <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-900">Upload New Image File</h3>

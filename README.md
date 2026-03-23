@@ -4,9 +4,10 @@ Next.js admin interface for Supabase data, including:
 
 - `/admin` redirecting to `/admin/dashboard`
 - `/admin/dashboard` with analytics, charts, and activity stats
-- `/admin/users` profile management (update `full_name` and `is_superadmin`)
+- `/admin/users` read-only profile explorer (reads from `profiles`)
 - `/admin/images` create/read/update/delete image rows + storage uploads
 - `/admin/captions` read-only caption explorer with `image_id` filtering
+- Pagination controls on major data pages (`users`, `images`, `captions`, and `/admin/[resource]`)
 - Additional resource sections under `/admin/*`:
   - Read-only: `humor_flavors`, `humor_flavor_steps`, `caption_requests`, `llm_prompt_chains`, `llm_responses`
   - Read/update: `humor_mix`
@@ -82,13 +83,13 @@ If Google login keeps redirecting to an unexpected domain (for example `https://
 ## Admin API Endpoints
 
 - `GET /api/admin/dashboard`
-- `GET /api/admin/users`
+- `GET /api/admin/users` (supports `limit`, `offset`, `search`)
 - `PATCH /api/admin/users/:id`
-- `GET /api/admin/images`
+- `GET /api/admin/images` (supports `limit`, `offset`, `search`, `user_id`, `bucket`)
 - `POST /api/admin/images`
 - `PATCH /api/admin/images/:id`
 - `DELETE /api/admin/images/:id`
-- `GET /api/admin/captions?image_id=...`
+- `GET /api/admin/captions` (supports `limit`, `offset`, `image_id`)
 
 ## Supabase Edge Functions
 

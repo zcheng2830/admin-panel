@@ -1,3 +1,4 @@
+import { PaginationControls } from "@/app/admin/components/pagination-controls";
 import { asRows, deriveColumns, formatCell, pickFirstString, toDate } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
@@ -17,7 +18,7 @@ function dayKey(value: unknown) {
 }
 
 type CaptionsPageProps = {
-  searchParams: Promise<{ image_id?: string }>;
+  searchParams: Promise<{ image_id?: string; limit?: string; page?: string }>;
 };
 
 function sanitizeImageId(value?: string) {
@@ -28,23 +29,60 @@ function sanitizeImageId(value?: string) {
   return value.replace(/[^a-zA-Z0-9_-]/g, "").trim();
 }
 
+function parseNumber(raw: string | undefined, fallback: number, min: number, max: number) {
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(parsed, min), max);
+}
+
 export default async function AdminCaptionsPage({ searchParams }: CaptionsPageProps) {
   const params = await searchParams;
   const imageId = sanitizeImageId(params.image_id);
+  const page = parseNumber(params.page, 1, 1, 10_000);
+  const limit = parseNumber(params.limit, 75, 10, 250);
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
   const { supabase } = await requireSuperadmin();
 
   let query = supabase
     .from("captions")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(700);
+    .select("*", { count: "exact" })
+    .order("created_datetime_utc", { ascending: false })
+    .range(from, to);
 
   if (imageId) {
     query = query.eq("image_id", imageId);
   }
 
-  const { data, error } = await query;
+  let { data, error, count } = await query;
+
+  if (error?.code === "42703") {
+    let fallbackQuery = supabase
+      .from("captions")
+      .select("*", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (imageId) {
+      fallbackQuery = fallbackQuery.eq("image_id", imageId);
+    }
+
+    const fallbackResult = await fallbackQuery;
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+    count = fallbackResult.count;
+  }
+
   const rows = asRows(data);
+  const totalCount = count ?? rows.length;
 
   const withText = rows.filter((row) => captionTextLength(row) > 0);
   const averageLength =
@@ -54,7 +92,9 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
 
   const dailyVolume = Object.entries(
     rows.reduce<Record<string, number>>((accumulator, row) => {
-      const key = dayKey(row.created_at ?? row.inserted_at ?? row.createdAt);
+      const key = dayKey(
+        row.created_datetime_utc ?? row.created_at ?? row.inserted_at ?? row.createdAt,
+      );
 
       if (!key) {
         return accumulator;
@@ -78,7 +118,11 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
       length: captionTextLength(row),
     }));
 
-  const columns = deriveColumns(rows, ["id", "image_id", "profile_id", "caption", "created_at"], 9);
+  const columns = deriveColumns(
+    rows,
+    ["id", "image_id", "profile_id", "caption", "created_datetime_utc", "created_at"],
+    9,
+  );
 
   return (
     <main className="space-y-5">
@@ -86,9 +130,10 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Captions</p>
         <h2 className="mt-2 text-2xl font-semibold text-slate-900">Caption Explorer (read-only)</h2>
         <p className="mt-3 text-sm text-slate-600">
-          {rows.length} rows loaded. Average caption length: {averageLength.toFixed(1)} characters.
+          {rows.length} rows loaded on this page. Average caption length: {averageLength.toFixed(1)} characters.
         </p>
         <form className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input type="hidden" name="limit" value={String(limit)} />
           <input
             name="image_id"
             defaultValue={imageId}
@@ -108,6 +153,15 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
           </p>
         ) : null}
       </section>
+
+      <PaginationControls
+        basePath="/admin/captions"
+        page={page}
+        pageSize={limit}
+        totalCount={totalCount}
+        extraParams={{ image_id: imageId }}
+        itemLabel="captions"
+      />
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">

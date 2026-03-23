@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { sanitizeNextPath } from "@/lib/admin-utils";
+import { isGoogleUser } from "@/lib/auth/google";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import { GoogleSignInButton } from "./google-sign-in-button";
@@ -35,6 +36,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   } = await supabase.auth.getUser();
 
   if (user) {
+    if (!isGoogleUser(user)) {
+      await supabase.auth.signOut();
+      redirect(`/auth/login?reason=google_required&next=${encodeURIComponent(nextPath)}`);
+    }
+
     const { data: profile } = await supabase
       .from("profiles")
       .select("is_superadmin")

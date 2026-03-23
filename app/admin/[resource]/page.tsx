@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { PaginationControls } from "@/app/admin/components/pagination-controls";
 import { RecordTable } from "@/app/admin/components/record-table";
 import {
   createResourceAction,
@@ -12,7 +13,7 @@ import { requireSuperadmin } from "@/lib/auth/guards";
 
 type ResourcePageProps = {
   params: Promise<{ resource: string }>;
-  searchParams: Promise<{ status?: string; message?: string }>;
+  searchParams: Promise<{ limit?: string; message?: string; page?: string; status?: string }>;
 };
 
 function feedback(status?: string, message?: string) {
@@ -57,6 +58,20 @@ function rowDisplayLabel(row: Record<string, unknown>) {
   );
 }
 
+function parseNumber(raw: string | undefined, fallback: number, min: number, max: number) {
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(parsed, min), max);
+}
+
 export default async function AdminResourcePage({ params, searchParams }: ResourcePageProps) {
   const [{ resource }, query] = await Promise.all([params, searchParams]);
   const config = getAdminResourceConfig(resource);
@@ -65,10 +80,22 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
     notFound();
   }
 
+  const configuredLimit = config.limit ?? 100;
+  const defaultLimit = Math.max(10, Math.min(configuredLimit, 100));
+  const maxLimit = Math.max(defaultLimit, Math.min(configuredLimit, 500));
+  const page = parseNumber(query.page, 1, 1, 10_000);
+  const limit = parseNumber(query.limit, defaultLimit, 10, maxLimit);
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
   const { supabase } = await requireSuperadmin();
-  const { data, error } = await supabase.from(config.table).select("*").limit(config.limit ?? 500);
+  const { data, error, count } = await supabase
+    .from(config.table)
+    .select("*", { count: "exact" })
+    .range(from, to);
   const rows = asRows(data);
   const banner = feedback(query.status, query.message);
+  const totalCount = count ?? rows.length;
 
   return (
     <main className="space-y-5">
@@ -76,7 +103,7 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{config.table}</p>
         <h2 className="mt-2 text-2xl font-semibold text-slate-900">{config.label}</h2>
         <p className="mt-3 text-sm text-slate-600">
-          {modeLabel(config.mode)}. {rows.length} rows loaded.
+          {modeLabel(config.mode)}. {rows.length} rows loaded on this page.
         </p>
         {error ? (
           <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -96,6 +123,13 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
           {banner.text}
         </section>
       ) : null}
+
+      <PaginationControls
+        basePath={`/admin/${config.slug}`}
+        page={page}
+        pageSize={limit}
+        totalCount={totalCount}
+      />
 
       {config.mode === "read" ? (
         <RecordTable

@@ -199,7 +199,12 @@ async function listAuthUsers(
 }
 
 function readTimestamp(row: DataRow) {
-  return toDate(row.created_at) ?? toDate(row.inserted_at) ?? toDate(row.createdAt);
+  return (
+    toDate(row.created_datetime_utc) ??
+    toDate(row.created_at) ??
+    toDate(row.inserted_at) ??
+    toDate(row.createdAt)
+  );
 }
 
 function readImageOwnerId(row: DataRow) {
