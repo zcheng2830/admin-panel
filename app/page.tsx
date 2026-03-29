@@ -1,6 +1,48 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+import { sanitizeNextPath } from "@/lib/admin-utils";
+
+type HomePageProps = {
+  searchParams: Promise<{
+    code?: string;
+    error?: string;
+    error_code?: string;
+    error_description?: string;
+    next?: string;
+  }>;
+};
+
+export default async function Home({ searchParams }: HomePageProps) {
+  const params = await searchParams;
+
+  if (params.code || params.error || params.error_code || params.error_description) {
+    const callbackParams = new URLSearchParams();
+
+    if (params.code) {
+      callbackParams.set("code", params.code);
+    }
+
+    if (params.error) {
+      callbackParams.set("error", params.error);
+    }
+
+    if (params.error_code) {
+      callbackParams.set("error_code", params.error_code);
+    }
+
+    if (params.error_description) {
+      callbackParams.set("error_description", params.error_description);
+    }
+
+    if (params.next) {
+      callbackParams.set("next", sanitizeNextPath(params.next));
+    }
+
+    const callbackQuery = callbackParams.toString();
+    redirect(`/auth/callback${callbackQuery ? `?${callbackQuery}` : ""}`);
+  }
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbeafe,_#f8fafc_50%,_#ffffff)] px-6 py-16 text-slate-900">
       <div className="mx-auto max-w-3xl rounded-3xl border border-white/60 bg-white/80 p-8 shadow-lg backdrop-blur">

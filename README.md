@@ -44,13 +44,20 @@ npm install
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
+# Use either publishable-key naming or anon-key naming:
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<your-supabase-publishable-key>
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+# Optional: force OAuth callback origin instead of runtime origin (useful behind proxies)
+# NEXT_PUBLIC_AUTH_REDIRECT_ORIGIN=https://your-admin-frontend-domain.com
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 # For Edge Functions:
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 BOOTSTRAP_SETUP_TOKEN=one-time-secret-token
 ```
+
+If this admin app should connect to the sibling `hello-world` project, point both
+projects to the same Supabase project URL and client key.
 
 3. Run locally:
 
@@ -65,6 +72,7 @@ npm run dev
 
 ```text
 http://localhost:3000/auth/callback
+http://localhost:3001/auth/callback
 https://your-admin-project.vercel.app/auth/callback
 https://your-custom-domain.com/auth/callback
 ```
@@ -79,6 +87,8 @@ If Google login keeps redirecting to an unexpected domain (for example `https://
 2. Ensure your current frontend origin is listed (local + production).
 3. Ensure your frontend is using the correct Supabase project URL/key pair for this environment.
 4. Ensure Google OAuth authorized redirect URIs match your Supabase project callback URLs.
+5. If you see `{"error":"requested path is invalid"}` at a URL like `https://secure.<your-domain>/?code=...`, you landed on the Supabase API gateway root, not your frontend app. Set `Site URL` to your frontend domain and include `/auth/callback` in redirect allow list.
+6. If your runtime origin can vary (proxy/IP/preview), set `NEXT_PUBLIC_AUTH_REDIRECT_ORIGIN` to a stable allowed frontend origin.
 
 ## Admin API Endpoints
 
