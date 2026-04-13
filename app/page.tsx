@@ -49,8 +49,8 @@ export default async function Home({ searchParams }: HomePageProps) {
         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">AlmostCrackd</p>
         <h1 className="mt-2 text-4xl font-semibold text-slate-900">Admin Area</h1>
         <p className="mt-4 text-sm text-slate-600">
-          Protected admin routes are available at <code>/admin</code>. Access requires Google auth and
-          a profile flagged as superadmin.
+          Open <code>/admin</code> to continue. If you are not signed in, you will be prompted to
+          authenticate with Google first.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
@@ -58,12 +58,6 @@ export default async function Home({ searchParams }: HomePageProps) {
             className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
             Open admin
-          </Link>
-          <Link
-            href="/auth/login"
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
-          >
-            Google sign-in
           </Link>
         </div>
       </div>

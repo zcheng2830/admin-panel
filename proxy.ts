@@ -16,14 +16,6 @@ function loginRedirect(request: NextRequest, reason?: string) {
   return NextResponse.redirect(target);
 }
 
-function notAuthorizedRedirect(request: NextRequest) {
-  const target = request.nextUrl.clone();
-  target.pathname = "/not-authorized";
-  target.searchParams.set("from", `${request.nextUrl.pathname}${request.nextUrl.search}`);
-
-  return NextResponse.redirect(target);
-}
-
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
     request,
@@ -62,16 +54,6 @@ export async function proxy(request: NextRequest) {
 
   if (!isGoogleUser(user)) {
     return loginRedirect(request, "google_required");
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("is_superadmin")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileError || !profile?.is_superadmin) {
-    return notAuthorizedRedirect(request);
   }
 
   return response;
