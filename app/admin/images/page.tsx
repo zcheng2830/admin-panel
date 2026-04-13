@@ -1,4 +1,11 @@
 import { PaginationControls } from "@/app/admin/components/pagination-controls";
+import {
+  buildEditableFields,
+  deriveEditableColumns,
+  formatFieldValue,
+  IMMUTABLE_COLUMNS,
+  type EditableField,
+} from "@/lib/admin-form";
 import { asRows, pickFirstString } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
@@ -12,6 +19,17 @@ import {
 type ImagesPageProps = {
   searchParams: Promise<{ limit?: string; message?: string; page?: string; status?: string }>;
 };
+
+const IMAGE_PREFERRED_COLUMNS = [
+  "user_id",
+  "title",
+  "url",
+  "storage_path",
+  "width",
+  "height",
+  "is_public",
+  "metadata",
+];
 
 function feedback(status?: string, message?: string) {
   if (!status) {
@@ -69,6 +87,64 @@ function parseNumber(raw: string | undefined, fallback: number, min: number, max
   return Math.min(Math.max(parsed, min), max);
 }
 
+function fieldInput(field: EditableField) {
+  const fieldName = `field:${field.column}`;
+  const defaultValue = formatFieldValue(field.value, field.type);
+
+  if (field.type === "boolean") {
+    return (
+      <label
+        key={field.column}
+        className="space-y-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+      >
+        <span className="text-xs uppercase tracking-[0.14em] text-slate-500">{field.column}</span>
+        <input type="hidden" name={`present:${field.column}`} value="1" />
+        <input type="hidden" name={`type:${field.column}`} value={field.type} />
+        <span className="flex items-center gap-2 text-sm text-slate-800">
+          <input
+            type="checkbox"
+            name={fieldName}
+            value="true"
+            defaultChecked={field.value === true}
+            className="size-4"
+          />
+          Enabled
+        </span>
+      </label>
+    );
+  }
+
+  if (field.type === "json") {
+    return (
+      <label key={field.column} className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
+        {field.column}
+        <input type="hidden" name={`present:${field.column}`} value="1" />
+        <input type="hidden" name={`type:${field.column}`} value={field.type} />
+        <textarea
+          name={fieldName}
+          defaultValue={defaultValue}
+          className="mt-1 h-24 w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-xs normal-case tracking-normal text-slate-800"
+        />
+      </label>
+    );
+  }
+
+  return (
+    <label key={field.column} className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
+      {field.column}
+      <input type="hidden" name={`present:${field.column}`} value="1" />
+      <input type="hidden" name={`type:${field.column}`} value={field.type} />
+      <input
+        name={fieldName}
+        type={field.type === "number" ? "number" : "text"}
+        step={field.type === "number" ? "any" : undefined}
+        defaultValue={defaultValue}
+        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-800"
+      />
+    </label>
+  );
+}
+
 export default async function AdminImagesPage({ searchParams }: ImagesPageProps) {
   const params = await searchParams;
   const page = parseNumber(params.page, 1, 1, 10_000);
@@ -84,6 +160,11 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
     .range(from, to);
   const rows = asRows(data);
   const totalCount = count ?? rows.length;
+  const editableColumns = deriveEditableColumns(rows, IMAGE_PREFERRED_COLUMNS);
+  const createColumns = editableColumns.length
+    ? editableColumns
+    : IMAGE_PREFERRED_COLUMNS.filter((column) => !IMMUTABLE_COLUMNS.has(column));
+  const createFields = buildEditableFields(createColumns);
 
   const banner = feedback(params.status, params.message);
 
@@ -93,7 +174,7 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Images</p>
         <h2 className="mt-2 text-2xl font-semibold text-slate-900">Image Manager (create/read/update/delete)</h2>
         <p className="mt-3 text-sm text-slate-600">
-          Insert new image rows with JSON payloads, then update or delete existing rows inline.
+          Create and edit image rows with field inputs, then update or delete existing rows inline.
         </p>
         {error ? (
           <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -173,11 +254,26 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
             <input type="checkbox" name="create_row" defaultChecked className="size-4" />
             Also create an `images` table row after upload
           </label>
-          <textarea
-            name="payload"
-            defaultValue={`{\n  "title": "Uploaded from admin"\n}`}
-            className="h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
-          />
+          {createFields.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {createFields.map((field) => fieldInput(field))}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              No editable columns were inferred. Use advanced JSON payload below when needed.
+            </p>
+          )}
+          <details className="rounded-xl border border-slate-200 bg-white p-3">
+            <summary className="cursor-pointer text-sm font-medium text-slate-800">
+              Advanced JSON payload
+            </summary>
+            <textarea
+              name="payload"
+              defaultValue=""
+              placeholder='{"title": "Uploaded from admin"}'
+              className="mt-3 h-24 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
+            />
+          </details>
           <button
             type="submit"
             className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -190,15 +286,29 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
       <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-900">Create Image Row</h3>
         <p className="mt-2 text-sm text-slate-600">
-          Provide a JSON object with the columns your `images` table expects.
+          Fill in the fields you want to set. Blank text/number/JSON fields are ignored.
         </p>
         <form action={createImageAction} className="mt-4 space-y-3">
-          <textarea
-            name="payload"
-            required
-            defaultValue={`{\n  "url": "https://example.com/image.jpg",\n  "title": "Homepage hero"\n}`}
-            className="h-36 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
-          />
+          {createFields.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {createFields.map((field) => fieldInput(field))}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              No editable columns were inferred. Use advanced JSON payload below.
+            </p>
+          )}
+          <details className="rounded-xl border border-slate-200 bg-white p-3">
+            <summary className="cursor-pointer text-sm font-medium text-slate-800">
+              Advanced JSON payload
+            </summary>
+            <textarea
+              name="payload"
+              defaultValue=""
+              placeholder='{"url": "https://example.com/image.jpg"}'
+              className="mt-3 h-28 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
+            />
+          </details>
           <button
             type="submit"
             className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -219,6 +329,13 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
             const hasId = id !== null && id !== undefined && String(id).length > 0;
             const metadata = Object.fromEntries(
               Object.entries(row).filter(([key]) => !["id", "created_at", "updated_at"].includes(key)),
+            );
+            const rowEditableColumns = editableColumns.filter((column) => {
+              return Object.prototype.hasOwnProperty.call(metadata, column);
+            });
+            const updateFields = buildEditableFields(
+              rowEditableColumns.length ? rowEditableColumns : Object.keys(metadata),
+              row,
             );
 
             return (
@@ -251,12 +368,25 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
                       <>
                         <form action={updateImageAction} className="space-y-3">
                           <input type="hidden" name="id" value={String(id)} />
-                          <textarea
-                            name="payload"
-                            required
-                            defaultValue={JSON.stringify(metadata, null, 2)}
-                            className="h-40 w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
-                          />
+                          {updateFields.length === 0 ? (
+                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                              No editable columns were found in this row.
+                            </p>
+                          ) : (
+                            <div className="grid gap-3 md:grid-cols-2">
+                              {updateFields.map((field) => fieldInput(field))}
+                            </div>
+                          )}
+                          <details className="rounded-xl border border-slate-200 bg-white p-3">
+                            <summary className="cursor-pointer text-sm font-medium text-slate-800">
+                              Advanced JSON payload
+                            </summary>
+                            <textarea
+                              name="payload"
+                              defaultValue={JSON.stringify(metadata, null, 2)}
+                              className="mt-3 h-28 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
+                            />
+                          </details>
                           <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="submit"

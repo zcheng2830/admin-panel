@@ -4,9 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getAdminResourceConfig, type AdminResourceConfig } from "@/lib/admin-resources";
+import { IMMUTABLE_COLUMNS, parseEditablePayload } from "@/lib/admin-form";
 import { requireSuperadmin } from "@/lib/auth/guards";
-
-const IMMUTABLE_COLUMNS = new Set(["id", "created_at", "updated_at"]);
 
 function errorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -41,7 +40,28 @@ function parseId(raw: FormDataEntryValue | null) {
   return value;
 }
 
-function parsePayload(raw: FormDataEntryValue | null) {
+function parsePayload(formData: FormData, raw: FormDataEntryValue | null) {
+  let fieldPayload: Record<string, unknown> | null;
+
+  try {
+    fieldPayload = parseEditablePayload(formData);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "No editable field values were provided." &&
+      typeof raw === "string" &&
+      raw.trim().length > 0
+    ) {
+      fieldPayload = null;
+    } else {
+      throw error;
+    }
+  }
+
+  if (fieldPayload) {
+    return fieldPayload;
+  }
+
   if (typeof raw !== "string") {
     throw new Error("Payload is required.");
   }
@@ -115,7 +135,7 @@ export async function createResourceAction(formData: FormData) {
 
   try {
     assertAllowed(config, "create");
-    const payload = parsePayload(formData.get("payload"));
+    const payload = parsePayload(formData, formData.get("payload"));
     const { error } = await supabase.from(table).insert(payload);
 
     if (error) {
@@ -139,7 +159,7 @@ export async function updateResourceAction(formData: FormData) {
   try {
     assertAllowed(config, "update");
     const id = parseId(formData.get("id"));
-    const payload = parsePayload(formData.get("payload"));
+    const payload = parsePayload(formData, formData.get("payload"));
 
     const { error } = await supabase.from(table).update(payload).eq("id", id);
 

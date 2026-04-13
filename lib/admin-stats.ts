@@ -198,6 +198,38 @@ async function listAuthUsers(
   return users;
 }
 
+function isOptionalAuthUsersError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+
+  return (
+    message.includes("auth.users") &&
+    (message.includes("not allowed") ||
+      message.includes("not authorized") ||
+      message.includes("permission") ||
+      message.includes("access denied"))
+  );
+}
+
+async function listAuthUsersForMetrics(
+  supabase: ReturnType<typeof createSupabaseServiceRoleClient>,
+  warnings: string[],
+) {
+  try {
+    return await listAuthUsers(supabase);
+  } catch (error) {
+    if (!isOptionalAuthUsersError(error)) {
+      throw error;
+    }
+
+    warnings.push("auth.users metrics unavailable; activity counts are limited.");
+    return [];
+  }
+}
+
 function readTimestamp(row: DataRow) {
   return (
     toDate(row.created_datetime_utc) ??
@@ -276,7 +308,7 @@ export async function getAdminDashboardStats(
     fetchSampleRows(supabase, "profiles"),
     fetchSampleRows(supabase, "images"),
     fetchSampleRows(supabase, "captions"),
-    listAuthUsers(supabase),
+    listAuthUsersForMetrics(supabase, warnings),
     fetchSampleRows(
       supabase,
       "caption_likes",

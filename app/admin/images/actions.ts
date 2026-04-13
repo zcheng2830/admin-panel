@@ -3,9 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { IMMUTABLE_COLUMNS, parseEditablePayload } from "@/lib/admin-form";
 import { requireSuperadmin } from "@/lib/auth/guards";
-
-const IMMUTABLE_COLUMNS = new Set(["id", "created_at", "updated_at"]);
 
 function errorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -35,7 +34,35 @@ function parseId(raw: FormDataEntryValue | null) {
   return trimmed;
 }
 
-function parsePayload(raw: FormDataEntryValue | null, allowEmpty = false) {
+function parsePayload(formData: FormData, raw: FormDataEntryValue | null, allowEmpty = false) {
+  let fieldPayload: Record<string, unknown> | null;
+
+  try {
+    fieldPayload = parseEditablePayload(formData);
+  } catch (error) {
+    if (
+      allowEmpty &&
+      error instanceof Error &&
+      error.message === "No editable field values were provided."
+    ) {
+      if (typeof raw === "string" && raw.trim().length > 0) {
+        fieldPayload = null;
+      } else {
+        return {};
+      }
+    }
+
+    if (!(error instanceof Error) || error.message !== "No editable field values were provided.") {
+      throw error;
+    }
+
+    fieldPayload = null;
+  }
+
+  if (fieldPayload) {
+    return fieldPayload;
+  }
+
   if (raw === null && allowEmpty) {
     return {};
   }
@@ -128,7 +155,7 @@ export async function createImageAction(formData: FormData) {
   let target = "/admin/images?status=created";
 
   try {
-    const payload = parsePayload(formData.get("payload"));
+    const payload = parsePayload(formData, formData.get("payload"));
     const { error } = await supabase.from("images").insert(payload);
 
     if (error) {
@@ -150,7 +177,7 @@ export async function updateImageAction(formData: FormData) {
 
   try {
     const id = parseId(formData.get("id"));
-    const payload = parsePayload(formData.get("payload"));
+    const payload = parsePayload(formData, formData.get("payload"));
 
     const { error } = await supabase.from("images").update(payload).eq("id", id);
 
@@ -234,7 +261,7 @@ export async function uploadImageAction(formData: FormData) {
     }
 
     if (shouldCreateRow) {
-      const payload = parsePayload(formData.get("payload"), true);
+      const payload = parsePayload(formData, formData.get("payload"), true);
       const {
         data: { publicUrl },
       } = supabase.storage.from(bucket).getPublicUrl(storagePath);
