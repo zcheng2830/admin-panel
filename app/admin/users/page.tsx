@@ -29,6 +29,15 @@ function parseNumber(raw: string | undefined, fallback: number, min: number, max
   return Math.min(Math.max(parsed, min), max);
 }
 
+function isSchemaError(error: { code?: string | null; message?: string } | null) {
+  if (!error) {
+    return false;
+  }
+
+  const message = error.message?.toLowerCase() ?? "";
+  return error.code === "42P01" || error.code === "42703" || message.includes("does not exist");
+}
+
 export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
   const params = await searchParams;
   const search = sanitizeSearch(params.q);
@@ -48,7 +57,35 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
     query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
   }
 
-  const { data, error, count } = await query;
+  let { data, error, count } = await query;
+
+  if (isSchemaError(error)) {
+    let fallbackQuery = supabase
+      .from("profiles")
+      .select("*", { count: "exact" })
+      .order("updated_at", { ascending: false })
+      .range(from, to);
+
+    if (search) {
+      fallbackQuery = fallbackQuery.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+    }
+
+    const fallbackResult = await fallbackQuery;
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+    count = fallbackResult.count;
+  }
+
+  if (isSchemaError(error)) {
+    const fallbackResult = await supabase
+      .from("profiles")
+      .select("*", { count: "exact" })
+      .range(from, to);
+
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+    count = fallbackResult.count;
+  }
   const rows = asRows(data);
   const superadminCount = rows.filter((row) => row.is_superadmin === true).length;
   const totalCount = count ?? rows.length;

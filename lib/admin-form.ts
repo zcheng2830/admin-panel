@@ -1,6 +1,14 @@
 import type { DataRow } from "@/lib/admin-utils";
 
 export const IMMUTABLE_COLUMNS = new Set(["id", "created_at", "updated_at"]);
+const SYSTEM_MANAGED_COLUMN_PATTERNS = [
+  /^created_by(_user_id|_profile_id)?$/i,
+  /^updated_by(_user_id|_profile_id)?$/i,
+  /^created_by_user_id$/i,
+  /^updated_by_user_id$/i,
+  /^created_by_profile_id$/i,
+  /^updated_by_profile_id$/i,
+];
 
 export type EditableFieldType = "boolean" | "json" | "number" | "string";
 
@@ -9,6 +17,14 @@ export type EditableField = {
   type: EditableFieldType;
   value: unknown;
 };
+
+export function isSystemManagedColumn(column: string) {
+  if (IMMUTABLE_COLUMNS.has(column)) {
+    return true;
+  }
+
+  return SYSTEM_MANAGED_COLUMN_PATTERNS.some((pattern) => pattern.test(column));
+}
 
 function normalizeFieldType(value: FormDataEntryValue | null): EditableFieldType {
   if (typeof value !== "string") {
@@ -134,7 +150,7 @@ export function deriveEditableColumns(rows: DataRow[], preferredColumns: string[
     ...rowColumns.filter((column) => !preferredColumns.includes(column)),
   ];
 
-  return ordered.filter((column) => !IMMUTABLE_COLUMNS.has(column));
+  return ordered.filter((column) => !isSystemManagedColumn(column));
 }
 
 export function buildEditableFields(columns: string[], row?: DataRow): EditableField[] {

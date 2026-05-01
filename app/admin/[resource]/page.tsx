@@ -12,6 +12,7 @@ import {
   deriveEditableColumns,
   formatFieldValue,
   IMMUTABLE_COLUMNS,
+  isSystemManagedColumn,
   type EditableField,
 } from "@/lib/admin-form";
 import { asRows, pickFirstString } from "@/lib/admin-utils";
@@ -77,6 +78,12 @@ function parseNumber(raw: string | undefined, fallback: number, min: number, max
   }
 
   return Math.min(Math.max(parsed, min), max);
+}
+
+function visibleColumns(columns: string[], hiddenColumns: string[] = []) {
+  return columns.filter((column) => {
+    return !hiddenColumns.includes(column) && !isSystemManagedColumn(column);
+  });
 }
 
 function fieldInput(field: EditableField) {
@@ -162,10 +169,17 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
   const banner = feedback(query.status, query.message);
   const totalCount = count ?? rows.length;
   const preferredColumns = config.preferredColumns ?? [];
-  const editableColumns = deriveEditableColumns(rows, preferredColumns);
+  const hiddenColumns = config.hiddenColumns ?? [];
+  const editableColumns = visibleColumns(
+    deriveEditableColumns(rows, preferredColumns),
+    hiddenColumns,
+  );
   const createColumns = editableColumns.length
     ? editableColumns
-    : preferredColumns.filter((column) => !IMMUTABLE_COLUMNS.has(column));
+    : visibleColumns(
+        preferredColumns.filter((column) => !IMMUTABLE_COLUMNS.has(column)),
+        hiddenColumns,
+      );
   const createFields = buildEditableFields(createColumns);
 
   return (
@@ -214,7 +228,7 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
             <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
               <h3 className="text-lg font-semibold text-slate-900">Create Row</h3>
               <p className="mt-2 text-sm text-slate-600">
-                Fill in the fields you want to set. Blank text/number/JSON fields are ignored.
+                Fill in the fields you want to set. Blank text/number/JSON fields are ignored, and admin-managed IDs are filled automatically when possible.
               </p>
               <form action={createResourceAction} className="mt-4 space-y-3">
                 <input type="hidden" name="slug" value={config.slug} />
@@ -267,7 +281,9 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
                   return Object.prototype.hasOwnProperty.call(metadata, column);
                 });
                 const updateFields = buildEditableFields(
-                  rowEditableColumns.length ? rowEditableColumns : Object.keys(metadata),
+                  rowEditableColumns.length
+                    ? rowEditableColumns
+                    : visibleColumns(Object.keys(metadata), hiddenColumns),
                   row,
                 );
 

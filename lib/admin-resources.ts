@@ -8,6 +8,7 @@ export type AdminResourceConfig = {
   mode: AdminResourceMode;
   limit?: number;
   preferredColumns?: string[];
+  hiddenColumns?: string[];
 };
 
 const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
@@ -49,6 +50,7 @@ const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
     table: "example_captions",
     mode: "crud",
     preferredColumns: ["id", "caption", "humor_flavor_id", "created_at", "updated_at"],
+    hiddenColumns: ["created_by_user_id", "updated_by_user_id"],
   },
   {
     slug: "terms",
@@ -57,6 +59,7 @@ const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
     table: "terms",
     mode: "crud",
     preferredColumns: ["id", "term", "category", "created_at", "updated_at"],
+    hiddenColumns: ["term_type_id", "created_by_user_id", "updated_by_user_id"],
   },
   {
     slug: "caption-requests",
@@ -73,6 +76,7 @@ const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
     table: "caption_examples",
     mode: "crud",
     preferredColumns: ["id", "caption", "caption_request_id", "created_at", "updated_at"],
+    hiddenColumns: ["created_by_user_id", "updated_by_user_id"],
   },
   {
     slug: "llm-models",

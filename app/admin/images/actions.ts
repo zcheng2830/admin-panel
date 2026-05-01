@@ -149,13 +149,25 @@ function revalidateAdmin() {
   revalidatePath("/admin/dashboard");
 }
 
+function applyImageDefaults(payload: Record<string, unknown>, userId: string) {
+  return {
+    ...payload,
+    ...(payload.user_id === undefined ? { user_id: userId } : {}),
+    ...(payload.created_by_user_id === undefined ? { created_by_user_id: userId } : {}),
+    ...(payload.updated_by_user_id === undefined ? { updated_by_user_id: userId } : {}),
+  };
+}
+
 export async function createImageAction(formData: FormData) {
-  const { supabase } = await requireSuperadmin();
+  const { supabase, user } = await requireSuperadmin();
 
   let target = "/admin/images?status=created";
 
   try {
-    const payload = parsePayload(formData, formData.get("payload"));
+    const payload = applyImageDefaults(
+      parsePayload(formData, formData.get("payload")),
+      user.id,
+    );
     const { error } = await supabase.from("images").insert(payload);
 
     if (error) {
@@ -171,13 +183,16 @@ export async function createImageAction(formData: FormData) {
 }
 
 export async function updateImageAction(formData: FormData) {
-  const { supabase } = await requireSuperadmin();
+  const { supabase, user } = await requireSuperadmin();
 
   let target = "/admin/images?status=updated";
 
   try {
     const id = parseId(formData.get("id"));
-    const payload = parsePayload(formData, formData.get("payload"));
+    const payload = {
+      ...parsePayload(formData, formData.get("payload")),
+      updated_by_user_id: user.id,
+    };
 
     const { error } = await supabase.from("images").update(payload).eq("id", id);
 
@@ -240,7 +255,7 @@ export async function deleteImageAction(formData: FormData) {
 }
 
 export async function uploadImageAction(formData: FormData) {
-  const { supabase } = await requireSuperadmin();
+  const { supabase, user } = await requireSuperadmin();
   let target = "/admin/images?status=uploaded";
 
   try {
@@ -261,7 +276,10 @@ export async function uploadImageAction(formData: FormData) {
     }
 
     if (shouldCreateRow) {
-      const payload = parsePayload(formData, formData.get("payload"), true);
+      const payload: Record<string, unknown> = applyImageDefaults(
+        parsePayload(formData, formData.get("payload"), true),
+        user.id,
+      );
       const {
         data: { publicUrl },
       } = supabase.storage.from(bucket).getPublicUrl(storagePath);

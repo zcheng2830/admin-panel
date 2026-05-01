@@ -86,6 +86,26 @@ async function fetchCount(
   return count ?? 0;
 }
 
+async function fetchOptionalCount(
+  supabase: ReturnType<typeof createSupabaseServiceRoleClient>,
+  table: string,
+  warnings: string[],
+) {
+  try {
+    return await fetchCount(supabase, table);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.toLowerCase().includes("does not exist")
+    ) {
+      warnings.push(`${table} is unavailable for dashboard metrics.`);
+      return 0;
+    }
+
+    throw error;
+  }
+}
+
 async function fetchSuperadminCount(
   supabase: ReturnType<typeof createSupabaseServiceRoleClient>,
 ) {
@@ -171,6 +191,18 @@ async function fetchSampleRows(
   }
 
   return rows;
+}
+
+async function fetchOptionalSampleRows(
+  supabase: ReturnType<typeof createSupabaseServiceRoleClient>,
+  table: string,
+  warnings: string[],
+  options?: { select?: string },
+) {
+  return fetchSampleRows(supabase, table, warnings, {
+    optional: true,
+    select: options?.select,
+  });
 }
 
 async function listAuthUsers(
@@ -303,11 +335,11 @@ export async function getAdminDashboardStats(
   ] = await Promise.all([
     fetchCount(supabase, "profiles"),
     fetchSuperadminCount(supabase),
-    fetchCount(supabase, "images"),
-    fetchCount(supabase, "captions"),
+    fetchOptionalCount(supabase, "images", warnings),
+    fetchOptionalCount(supabase, "captions", warnings),
     fetchSampleRows(supabase, "profiles"),
-    fetchSampleRows(supabase, "images"),
-    fetchSampleRows(supabase, "captions"),
+    fetchOptionalSampleRows(supabase, "images", warnings),
+    fetchOptionalSampleRows(supabase, "captions", warnings),
     listAuthUsersForMetrics(supabase, warnings),
     fetchSampleRows(
       supabase,

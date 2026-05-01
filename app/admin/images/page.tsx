@@ -4,6 +4,7 @@ import {
   deriveEditableColumns,
   formatFieldValue,
   IMMUTABLE_COLUMNS,
+  isSystemManagedColumn,
   type EditableField,
 } from "@/lib/admin-form";
 import { asRows, pickFirstString } from "@/lib/admin-utils";
@@ -21,14 +22,21 @@ type ImagesPageProps = {
 };
 
 const IMAGE_PREFERRED_COLUMNS = [
-  "user_id",
   "title",
   "url",
-  "storage_path",
   "width",
   "height",
   "is_public",
   "metadata",
+];
+
+const IMAGE_HIDDEN_COLUMNS = [
+  "bucket",
+  "created_by_user_id",
+  "profile_id",
+  "storage_path",
+  "updated_by_user_id",
+  "user_id",
 ];
 
 function feedback(status?: string, message?: string) {
@@ -85,6 +93,21 @@ function parseNumber(raw: string | undefined, fallback: number, min: number, max
   }
 
   return Math.min(Math.max(parsed, min), max);
+}
+
+function isSchemaError(error: { code?: string | null; message?: string } | null) {
+  if (!error) {
+    return false;
+  }
+
+  const message = error.message?.toLowerCase() ?? "";
+  return error.code === "42P01" || error.code === "42703" || message.includes("does not exist");
+}
+
+function visibleColumns(columns: string[]) {
+  return columns.filter((column) => {
+    return !IMAGE_HIDDEN_COLUMNS.includes(column) && !isSystemManagedColumn(column);
+  });
 }
 
 function fieldInput(field: EditableField) {
@@ -153,17 +176,44 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
   const to = from + limit - 1;
   const { supabase } = await requireSuperadmin();
 
-  const { data, error, count } = await supabase
+  let query = supabase
     .from("images")
     .select("*", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
+
+  let { data, error, count } = await query;
+
+  if (isSchemaError(error)) {
+    query = supabase
+      .from("images")
+      .select("*", { count: "exact" })
+      .order("created_datetime_utc", { ascending: false })
+      .range(from, to);
+
+    const fallbackResult = await query;
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+    count = fallbackResult.count;
+  }
+
+  if (isSchemaError(error)) {
+    const fallbackResult = await supabase
+      .from("images")
+      .select("*", { count: "exact" })
+      .range(from, to);
+
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+    count = fallbackResult.count;
+  }
+
   const rows = asRows(data);
   const totalCount = count ?? rows.length;
-  const editableColumns = deriveEditableColumns(rows, IMAGE_PREFERRED_COLUMNS);
+  const editableColumns = visibleColumns(deriveEditableColumns(rows, IMAGE_PREFERRED_COLUMNS));
   const createColumns = editableColumns.length
     ? editableColumns
-    : IMAGE_PREFERRED_COLUMNS.filter((column) => !IMMUTABLE_COLUMNS.has(column));
+    : visibleColumns(IMAGE_PREFERRED_COLUMNS.filter((column) => !IMMUTABLE_COLUMNS.has(column)));
   const createFields = buildEditableFields(createColumns);
 
   const banner = feedback(params.status, params.message);
@@ -174,7 +224,7 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Images</p>
         <h2 className="mt-2 text-2xl font-semibold text-slate-900">Image Manager (create/read/update/delete)</h2>
         <p className="mt-3 text-sm text-slate-600">
-          Create and edit image rows with field inputs, then update or delete existing rows inline.
+          Upload an image or create an image row with the user-facing fields only. Storage paths and admin IDs are filled automatically.
         </p>
         {error ? (
           <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -216,40 +266,10 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
             required
             className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"
           />
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
-              Bucket
-              <input
-                name="bucket"
-                defaultValue="images"
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-800"
-              />
-            </label>
-            <label className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
-              Folder
-              <input
-                name="folder"
-                defaultValue="admin-uploads"
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-800"
-              />
-            </label>
-            <label className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
-              URL Column
-              <input
-                name="url_column"
-                defaultValue="url"
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-800"
-              />
-            </label>
-            <label className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
-              Path Column
-              <input
-                name="path_column"
-                defaultValue="storage_path"
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-800"
-              />
-            </label>
-          </div>
+          <input type="hidden" name="bucket" value="images" />
+          <input type="hidden" name="folder" value="admin-uploads" />
+          <input type="hidden" name="url_column" value="url" />
+          <input type="hidden" name="path_column" value="storage_path" />
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" name="create_row" defaultChecked className="size-4" />
             Also create an `images` table row after upload
@@ -286,7 +306,7 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
       <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-900">Create Image Row</h3>
         <p className="mt-2 text-sm text-slate-600">
-          Fill in the fields you want to set. Blank text/number/JSON fields are ignored.
+          Fill in the fields you want to set. Blank text/number/JSON fields are ignored, and storage/admin fields are handled for you.
         </p>
         <form action={createImageAction} className="mt-4 space-y-3">
           {createFields.length > 0 ? (
@@ -334,7 +354,7 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
               return Object.prototype.hasOwnProperty.call(metadata, column);
             });
             const updateFields = buildEditableFields(
-              rowEditableColumns.length ? rowEditableColumns : Object.keys(metadata),
+              rowEditableColumns.length ? rowEditableColumns : visibleColumns(Object.keys(metadata)),
               row,
             );
 
