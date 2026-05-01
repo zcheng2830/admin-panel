@@ -17,6 +17,36 @@ function dayKey(value: unknown) {
   return date.toISOString().slice(0, 10);
 }
 
+function isOptionalSchemaError(error: { code?: string | null; message?: string } | null) {
+  if (!error) {
+    return false;
+  }
+
+  const message = error.message?.toLowerCase() ?? "";
+
+  return (
+    error.code === "42P01" ||
+    error.code === "42703" ||
+    message.includes("does not exist")
+  );
+}
+
+function parseNumericVote(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
 type CaptionsPageProps = {
   searchParams: Promise<{ image_id?: string; limit?: string; page?: string }>;
 };
@@ -83,6 +113,56 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
 
   const rows = asRows(data);
   const totalCount = count ?? rows.length;
+  const captionIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row.id)
+        .filter((id): id is string | number => id !== null && id !== undefined)
+        .map(String),
+    ),
+  );
+
+  let ratingRows: Array<Record<string, unknown>> = [];
+  let ratingWarning: string | null = null;
+  let ratingError: string | null = null;
+
+  if (captionIds.length > 0) {
+    const voteSelectCandidates = [
+      "caption_id, vote_value, profile_id, user_id",
+      "caption_id, vote_value, profile_id",
+      "caption_id, vote_value, user_id",
+      "caption_id, vote_value",
+    ];
+
+    let hasLoadedVotes = false;
+    let optionalSchemaFailure = false;
+
+    for (const columns of voteSelectCandidates) {
+      const { data: votesData, error: votesError } = await supabase
+        .from("caption_votes")
+        .select(columns)
+        .in("caption_id", captionIds);
+
+      if (votesError) {
+        if (isOptionalSchemaError(votesError)) {
+          optionalSchemaFailure = true;
+          continue;
+        }
+
+        ratingError = votesError.message;
+        hasLoadedVotes = true;
+        break;
+      }
+
+      ratingRows = asRows(votesData);
+      hasLoadedVotes = true;
+      break;
+    }
+
+    if (!hasLoadedVotes && optionalSchemaFailure) {
+      ratingWarning = "caption_votes data is unavailable in this environment.";
+    }
+  }
 
   const withText = rows.filter((row) => captionTextLength(row) > 0);
   const averageLength =
@@ -117,6 +197,104 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
         "No text field found",
       length: captionTextLength(row),
     }));
+
+  const voteCountsByCaption = ratingRows.reduce<Record<string, number>>((accumulator, row) => {
+    const captionId = row.caption_id;
+
+    if (captionId === null || captionId === undefined) {
+      return accumulator;
+    }
+
+    const key = String(captionId);
+    accumulator[key] = (accumulator[key] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
+  const voteDistribution = ratingRows.reduce<Record<string, number>>((accumulator, row) => {
+    const key =
+      row.vote_value === null || row.vote_value === undefined
+        ? "null"
+        : String(row.vote_value);
+    accumulator[key] = (accumulator[key] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
+  const voteSumsByCaption: Record<string, number> = {};
+  const numericVoteCountsByCaption: Record<string, number> = {};
+  let numericVoteTotal = 0;
+  let numericVoteCount = 0;
+
+  for (const row of ratingRows) {
+    const captionId = row.caption_id;
+
+    if (captionId === null || captionId === undefined) {
+      continue;
+    }
+
+    const numericVote = parseNumericVote(row.vote_value);
+
+    if (numericVote === null) {
+      continue;
+    }
+
+    const key = String(captionId);
+    voteSumsByCaption[key] = (voteSumsByCaption[key] ?? 0) + numericVote;
+    numericVoteCountsByCaption[key] = (numericVoteCountsByCaption[key] ?? 0) + 1;
+    numericVoteTotal += numericVote;
+    numericVoteCount += 1;
+  }
+
+  const uniqueRaters = new Set(
+    ratingRows
+      .map((row) => row.profile_id ?? row.user_id)
+      .filter((id): id is string | number => id !== null && id !== undefined)
+      .map(String),
+  );
+
+  const captionPreviewById = new Map(
+    rows
+      .map((row) => {
+        const id = row.id;
+
+        if (id === null || id === undefined) {
+          return null;
+        }
+
+        return [
+          String(id),
+          pickFirstString(row, ["caption", "text", "content", "body"]) ?? String(id),
+        ] as const;
+      })
+      .filter((entry): entry is readonly [string, string] => entry !== null),
+  );
+
+  const totalVotes = ratingRows.length;
+  const ratedCaptionCount = Object.keys(voteCountsByCaption).length;
+  const unratedCaptionCount = Math.max(rows.length - ratedCaptionCount, 0);
+  const averageVotesPerCaption = rows.length > 0 ? totalVotes / rows.length : 0;
+  const averageVotesPerRatedCaption =
+    ratedCaptionCount > 0 ? totalVotes / ratedCaptionCount : 0;
+  const averageNumericVote = numericVoteCount > 0 ? numericVoteTotal / numericVoteCount : null;
+
+  const topRatedCaptions = Object.entries(voteCountsByCaption)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([captionId, votes]) => {
+      const numericCount = numericVoteCountsByCaption[captionId] ?? 0;
+      const averageVote =
+        numericCount > 0 ? (voteSumsByCaption[captionId] ?? 0) / numericCount : null;
+
+      return {
+        averageVote,
+        captionId,
+        preview: captionPreviewById.get(captionId) ?? captionId,
+        votes,
+      };
+    });
+
+  const topVoteValues = Object.entries(voteDistribution)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
 
   const columns = deriveColumns(
     rows,
@@ -199,6 +377,103 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
           )}
         </div>
       </section>
+
+      <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
+        <h3 className="text-lg font-semibold text-slate-900">Caption Rating Stats (this page)</h3>
+        {ratingError ? (
+          <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            Unable to load caption_votes statistics: {ratingError}
+          </p>
+        ) : null}
+        {ratingWarning ? (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {ratingWarning}
+          </p>
+        ) : null}
+
+        {!ratingError && !ratingWarning ? (
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Coverage</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">
+                {ratedCaptionCount}/{rows.length}
+              </p>
+              <p className="mt-1 text-sm text-slate-600">captions have at least one rating</p>
+              <p className="mt-1 text-xs text-slate-500">{unratedCaptionCount} unrated</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Votes</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{totalVotes}</p>
+              <p className="mt-1 text-sm text-slate-600">
+                {averageVotesPerCaption.toFixed(2)} votes per loaded caption
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {averageVotesPerRatedCaption.toFixed(2)} per rated caption
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Raters</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{uniqueRaters.size}</p>
+              <p className="mt-1 text-sm text-slate-600">distinct profiles/users</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {averageNumericVote === null
+                  ? "No numeric vote scale detected"
+                  : `Average numeric vote: ${averageNumericVote.toFixed(2)}`}
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      {!ratingError && !ratingWarning ? (
+        <section className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Most Rated Captions</h3>
+            {topRatedCaptions.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-600">No caption ratings found for loaded rows.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {topRatedCaptions.map((caption) => (
+                  <li
+                    key={caption.captionId}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                  >
+                    <p className="font-medium text-slate-900">
+                      {caption.votes} votes
+                      {caption.averageVote === null
+                        ? ""
+                        : ` · avg ${caption.averageVote.toFixed(2)}`}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{caption.captionId}</p>
+                    <p className="mt-1 line-clamp-2 text-slate-600">{caption.preview}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-slate-900">Rating Value Distribution</h3>
+            {topVoteValues.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-600">No vote values found for loaded rows.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {topVoteValues.map(([voteValue, votes]) => (
+                  <li
+                    key={voteValue}
+                    className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                  >
+                    <span className="font-medium text-slate-900">{voteValue}</span>
+                    <span className="text-slate-600">{votes}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       {rows.length === 0 ? (
         <div className="rounded-2xl border border-white/40 bg-white/80 p-6 text-sm text-slate-600 shadow-sm">

@@ -6,7 +6,7 @@ Next.js admin interface for Supabase data, including:
 - `/admin/dashboard` with analytics, charts, and activity stats
 - `/admin/users` read-only profile explorer (reads from `profiles`)
 - `/admin/images` create/read/update/delete image rows + storage uploads
-- `/admin/captions` read-only caption explorer with `image_id` filtering
+- `/admin/captions` read-only caption explorer with `image_id` filtering and per-page caption rating statistics
 - Pagination controls on major data pages (`users`, `images`, `captions`, and `/admin/[resource]`)
 - Additional resource sections under `/admin/*`:
   - Read-only: `humor_flavors`, `humor_flavor_steps`, `caption_requests`, `llm_prompt_chains`, `llm_responses`
