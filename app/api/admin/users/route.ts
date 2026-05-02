@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isMissingSchemaError } from "@/lib/admin-utils";
 import { adminApiError, authorizeAdminApiRequest } from "@/lib/auth/admin-api";
 
 function parseLimit(searchParams: URLSearchParams, fallback = 200, max = 500) {
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
 
   let query = auth.context.supabase
     .from("profiles")
-    .select("id, email, full_name, is_superadmin, created_at, updated_at", {
+    .select("*", {
       count: "exact",
     })
     .order("created_at", { ascending: false })
@@ -67,16 +68,34 @@ export async function GET(request: Request) {
     query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
   }
 
-  const { data, error, count } = await query;
+  let { data, error, count } = await query;
+
+  if (isMissingSchemaError(error)) {
+    let fallbackQuery = auth.context.supabase
+      .from("profiles")
+      .select("*", { count: "exact" })
+      .range(offset, rangeTo);
+
+    if (search) {
+      fallbackQuery = fallbackQuery.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+    }
+
+    const fallbackResult = await fallbackQuery;
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+    count = fallbackResult.count;
+  }
 
   if (error) {
     return adminApiError(error.message, 500);
   }
 
+  const users = data ?? [];
+
   return NextResponse.json({
     limit,
     offset,
-    totalCount: count ?? data.length,
-    users: data,
+    totalCount: count ?? users.length,
+    users,
   });
 }

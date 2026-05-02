@@ -1,32 +1,47 @@
 import Link from "next/link";
 
 import { getAdminResources } from "@/lib/admin-resources";
+import { isMissingSchemaError } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
 import { SignOutButton } from "./components/sign-out-button";
-
-const NAV_LINKS = [
-  { href: "/admin/dashboard", label: "Dashboard", subtitle: "Activity & trends" },
-  { href: "/admin/users", label: "Users", subtitle: "Profiles (read-only)" },
-  {
-    href: "/admin/images",
-    label: "Images",
-    subtitle: "Create / read / update / delete + upload",
-  },
-  { href: "/admin/captions", label: "Captions", subtitle: "Read & quality checks" },
-  ...getAdminResources().map((resource) => ({
-    href: `/admin/${resource.slug}`,
-    label: resource.label,
-    subtitle: resource.subtitle,
-  })),
-];
 
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user } = await requireSuperadmin();
+  const { supabase, user } = await requireSuperadmin();
+  const baseLinks = [
+    { href: "/admin/dashboard", label: "Dashboard", subtitle: "Activity & trends" },
+    { href: "/admin/users", label: "Users", subtitle: "Profiles (read-only)" },
+    {
+      href: "/admin/images",
+      label: "Images",
+      subtitle: "Create / read / update / delete + upload",
+    },
+    { href: "/admin/captions", label: "Captions", subtitle: "Read & quality checks" },
+  ];
+
+  const resourceResults = await Promise.all(
+    getAdminResources().map(async (resource) => {
+      const { error } = await supabase
+        .from(resource.table)
+        .select("*", { count: "exact", head: true });
+
+      if (isMissingSchemaError(error)) {
+        return null;
+      }
+
+      return {
+        href: `/admin/${resource.slug}`,
+        label: resource.label,
+        subtitle: resource.subtitle,
+      };
+    }),
+  );
+
+  const navLinks = [...baseLinks, ...resourceResults.filter((link) => link !== null)];
 
   return (
     <div className="min-h-screen bg-[linear-gradient(135deg,_#f8fafc,_#e2e8f0_50%,_#dbeafe)] text-slate-900">
@@ -40,7 +55,7 @@ export default async function AdminLayout({
             <p className="mt-2 text-sm text-slate-600">{user.email ?? user.id}</p>
           </div>
           <nav className="mt-6 space-y-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}

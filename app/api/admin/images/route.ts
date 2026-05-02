@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { asRows } from "@/lib/admin-utils";
+import { asRows, getMissingColumnName, isMissingSchemaError } from "@/lib/admin-utils";
 import { adminApiError, authorizeAdminApiRequest } from "@/lib/auth/admin-api";
 
 const IMMUTABLE_COLUMNS = new Set(["id", "created_at", "updated_at"]);
@@ -128,6 +128,32 @@ function parsePayloadFormValue(raw: FormDataEntryValue | null) {
   return parsed as Record<string, unknown>;
 }
 
+async function runInsertWithFallback(
+  insert: (payload: Record<string, unknown>) => Promise<{ data?: unknown; error: { message: string } | null }>,
+  payload: Record<string, unknown>,
+) {
+  const nextPayload = { ...payload };
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const result = await insert(nextPayload);
+
+    if (!result.error) {
+      return result;
+    }
+
+    const missingColumn = getMissingColumnName(result.error.message);
+
+    if (missingColumn && missingColumn in nextPayload) {
+      delete nextPayload[missingColumn];
+      continue;
+    }
+
+    throw new Error(result.error.message);
+  }
+
+  throw new Error("Image insert failed.");
+}
+
 export async function GET(request: Request) {
   const auth = await authorizeAdminApiRequest(request);
 
@@ -157,7 +183,23 @@ export async function GET(request: Request) {
     query = query.or(`title.ilike.%${search}%,storage_path.ilike.%${search}%`);
   }
 
-  const { data, error, count } = await query;
+  let { data, error, count } = await query;
+
+  if (isMissingSchemaError(error)) {
+    let fallbackQuery = auth.context.supabase
+      .from("images")
+      .select("*", { count: "exact" })
+      .range(offset, rangeTo);
+
+    if (userId) {
+      fallbackQuery = fallbackQuery.eq("user_id", userId);
+    }
+
+    const fallbackResult = await fallbackQuery;
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+    count = fallbackResult.count;
+  }
 
   if (error) {
     return adminApiError(error.message, 500);
@@ -259,7 +301,6 @@ export async function POST(request: Request) {
       try {
         insertPayload = cleanPayload({
           ...payload,
-          ...(payload.storage_path ? {} : { storage_path: storagePath }),
           ...(title && payload.title === undefined ? { title } : {}),
           ...(userId && payload.user_id === undefined ? { user_id: userId } : {}),
         });
@@ -270,17 +311,16 @@ export async function POST(request: Request) {
         );
       }
 
-      const { data, error } = await auth.context.supabase
-        .from("images")
-        .insert(insertPayload)
-        .select("*")
-        .single();
-
-      if (error) {
-        return adminApiError(error.message, 500);
+      try {
+        const result = await runInsertWithFallback(
+          async (nextPayload) =>
+            auth.context.supabase.from("images").insert(nextPayload).select("*").single(),
+          insertPayload,
+        );
+        image = (result.data ?? null) as Record<string, unknown> | null;
+      } catch (error) {
+        return adminApiError(error instanceof Error ? error.message : "Image insert failed.", 500);
       }
-
-      image = data as Record<string, unknown>;
     }
 
     const { data: signed } = await auth.context.supabase.storage

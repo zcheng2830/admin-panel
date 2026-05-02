@@ -1,9 +1,10 @@
 import "server-only";
 
-import type { PostgrestError, User } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
 
 import {
   asRows,
+  isMissingSchemaError,
   pickFirstString,
   toDate,
   type DataRow,
@@ -96,7 +97,9 @@ async function fetchOptionalCount(
   } catch (error) {
     if (
       error instanceof Error &&
-      error.message.toLowerCase().includes("does not exist")
+      (error.message.toLowerCase().includes("does not exist") ||
+        error.message.toLowerCase().includes("schema cache") ||
+        error.message.toLowerCase().includes("could not find the table"))
     ) {
       warnings.push(`${table} is unavailable for dashboard metrics.`);
       return 0;
@@ -121,18 +124,6 @@ async function fetchSuperadminCount(
   return count ?? 0;
 }
 
-function isOptionalSchemaError(error: PostgrestError | null) {
-  if (!error) {
-    return false;
-  }
-
-  return (
-    error.code === "42P01" ||
-    error.code === "42703" ||
-    error.message.toLowerCase().includes("does not exist")
-  );
-}
-
 async function fetchOptionalCountByColumn(
   supabase: ReturnType<typeof createSupabaseServiceRoleClient>,
   table: string,
@@ -146,7 +137,7 @@ async function fetchOptionalCountByColumn(
     .eq(column, value);
 
   if (error) {
-    if (isOptionalSchemaError(error)) {
+    if (isMissingSchemaError(error)) {
       warnings.push(`${table}.${column} is unavailable.`);
       return null;
     }
@@ -174,7 +165,7 @@ async function fetchSampleRows(
       .range(from, to);
 
     if (error) {
-      if (options?.optional && isOptionalSchemaError(error)) {
+      if (options?.optional && isMissingSchemaError(error)) {
         warnings?.push(`${table} is unavailable for dashboard metrics.`);
         return null;
       }

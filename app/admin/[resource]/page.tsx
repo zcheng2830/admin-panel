@@ -15,7 +15,7 @@ import {
   isSystemManagedColumn,
   type EditableField,
 } from "@/lib/admin-form";
-import { asRows, pickFirstString } from "@/lib/admin-utils";
+import { asRows, isMissingSchemaError, pickFirstString } from "@/lib/admin-utils";
 import { getAdminResourceConfig } from "@/lib/admin-resources";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
@@ -84,6 +84,10 @@ function visibleColumns(columns: string[], hiddenColumns: string[] = []) {
   return columns.filter((column) => {
     return !hiddenColumns.includes(column) && !isSystemManagedColumn(column);
   });
+}
+
+function visibleFields(fields: EditableField[]) {
+  return fields.filter((field) => field.type !== "json");
 }
 
 function fieldInput(field: EditableField) {
@@ -180,7 +184,11 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
         preferredColumns.filter((column) => !IMMUTABLE_COLUMNS.has(column)),
         hiddenColumns,
       );
-  const createFields = buildEditableFields(createColumns);
+  const createFields = visibleFields(buildEditableFields(createColumns));
+
+  if (isMissingSchemaError(error)) {
+    notFound();
+  }
 
   return (
     <main className="space-y-5">
@@ -228,31 +236,20 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
             <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
               <h3 className="text-lg font-semibold text-slate-900">Create Row</h3>
               <p className="mt-2 text-sm text-slate-600">
-                Fill in the fields you want to set. Blank text/number/JSON fields are ignored, and admin-managed IDs are filled automatically when possible.
+                Fill in the fields you want to set. Blank fields are ignored, and admin-managed IDs are filled automatically when possible.
               </p>
               <form action={createResourceAction} className="mt-4 space-y-3">
                 <input type="hidden" name="slug" value={config.slug} />
                 <input type="hidden" name="table" value={config.table} />
                 {createFields.length === 0 ? (
                   <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    No editable columns were inferred. Use advanced JSON payload below.
+                    No editable form fields are available for this table.
                   </p>
                 ) : (
                   <div className="grid gap-3 md:grid-cols-2">
                     {createFields.map((field) => fieldInput(field))}
                   </div>
                 )}
-                <details className="rounded-xl border border-slate-200 bg-white p-3">
-                  <summary className="cursor-pointer text-sm font-medium text-slate-800">
-                    Advanced JSON payload
-                  </summary>
-                  <textarea
-                    name="payload"
-                    defaultValue=""
-                    placeholder='{"column": "value"}'
-                    className="mt-3 h-28 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
-                  />
-                </details>
                 <button
                   type="submit"
                   className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -280,12 +277,12 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
                 const rowEditableColumns = editableColumns.filter((column) => {
                   return Object.prototype.hasOwnProperty.call(metadata, column);
                 });
-                const updateFields = buildEditableFields(
+                const updateFields = visibleFields(buildEditableFields(
                   rowEditableColumns.length
                     ? rowEditableColumns
                     : visibleColumns(Object.keys(metadata), hiddenColumns),
                   row,
-                );
+                ));
 
                 return (
                   <article
@@ -315,16 +312,6 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
                               {updateFields.map((field) => fieldInput(field))}
                             </div>
                           )}
-                          <details className="rounded-xl border border-slate-200 bg-white p-3">
-                            <summary className="cursor-pointer text-sm font-medium text-slate-800">
-                              Advanced JSON payload
-                            </summary>
-                            <textarea
-                              name="payload"
-                              defaultValue={JSON.stringify(metadata, null, 2)}
-                              className="mt-3 h-28 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
-                            />
-                          </details>
                           <button
                             type="submit"
                             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"

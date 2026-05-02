@@ -1,5 +1,12 @@
 import { PaginationControls } from "@/app/admin/components/pagination-controls";
-import { asRows, deriveColumns, formatCell, pickFirstString, toDate } from "@/lib/admin-utils";
+import {
+  asRows,
+  deriveColumns,
+  formatCell,
+  isMissingSchemaError,
+  pickFirstString,
+  toDate,
+} from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
 function captionTextLength(row: Record<string, unknown>) {
@@ -15,20 +22,6 @@ function dayKey(value: unknown) {
   }
 
   return date.toISOString().slice(0, 10);
-}
-
-function isOptionalSchemaError(error: { code?: string | null; message?: string } | null) {
-  if (!error) {
-    return false;
-  }
-
-  const message = error.message?.toLowerCase() ?? "";
-
-  return (
-    error.code === "42P01" ||
-    error.code === "42703" ||
-    message.includes("does not exist")
-  );
 }
 
 function parseNumericVote(value: unknown) {
@@ -144,7 +137,7 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
         .in("caption_id", captionIds);
 
       if (votesError) {
-        if (isOptionalSchemaError(votesError)) {
+        if (isMissingSchemaError(votesError)) {
           optionalSchemaFailure = true;
           continue;
         }
@@ -160,7 +153,7 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
     }
 
     if (!hasLoadedVotes && optionalSchemaFailure) {
-      ratingWarning = "caption_votes data is unavailable in this environment.";
+      ratingWarning = null;
     }
   }
 
@@ -378,20 +371,16 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
         </div>
       </section>
 
-      <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900">Caption Rating Stats (this page)</h3>
-        {ratingError ? (
-          <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            Unable to load caption_votes statistics: {ratingError}
-          </p>
-        ) : null}
-        {ratingWarning ? (
-          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            {ratingWarning}
-          </p>
-        ) : null}
+      {!ratingWarning ? (
+        <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-900">Caption Rating Stats (this page)</h3>
+          {ratingError ? (
+            <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              Unable to load caption voting statistics: {ratingError}
+            </p>
+          ) : null}
 
-        {!ratingError && !ratingWarning ? (
+          {!ratingError ? (
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Coverage</p>
@@ -424,8 +413,9 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
               </p>
             </div>
           </div>
-        ) : null}
-      </section>
+          ) : null}
+        </section>
+      ) : null}
 
       {!ratingError && !ratingWarning ? (
         <section className="grid gap-4 lg:grid-cols-2">

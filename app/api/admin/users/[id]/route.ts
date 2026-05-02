@@ -103,7 +103,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     .from("profiles")
     .update(payload)
     .eq("id", id)
-    .select("id, email, full_name, is_superadmin, created_at, updated_at")
+    .select("*")
     .maybeSingle();
 
   if (error) {

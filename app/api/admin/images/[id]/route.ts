@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getMissingColumnName } from "@/lib/admin-utils";
 import { adminApiError, authorizeAdminApiRequest } from "@/lib/auth/admin-api";
 
 const IMMUTABLE_COLUMNS = new Set(["id", "created_at", "updated_at"]);
@@ -31,6 +32,32 @@ function cleanPayload(raw: unknown) {
   return cleaned;
 }
 
+async function runUpdateWithFallback(
+  update: (payload: Record<string, unknown>) => Promise<{ data?: unknown; error: { message: string } | null }>,
+  payload: Record<string, unknown>,
+) {
+  const nextPayload = { ...payload };
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const result = await update(nextPayload);
+
+    if (!result.error) {
+      return result;
+    }
+
+    const missingColumn = getMissingColumnName(result.error.message);
+
+    if (missingColumn && missingColumn in nextPayload) {
+      delete nextPayload[missingColumn];
+      continue;
+    }
+
+    throw new Error(result.error.message);
+  }
+
+  throw new Error("Image update failed.");
+}
+
 export async function PATCH(request: Request, { params }: RouteContext) {
   const auth = await authorizeAdminApiRequest(request);
 
@@ -56,15 +83,22 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     );
   }
 
-  const { data, error } = await auth.context.supabase
-    .from("images")
-    .update(payload)
-    .eq("id", id)
-    .select("*")
-    .maybeSingle();
+  let data: unknown;
 
-  if (error) {
-    return adminApiError(error.message, 500);
+  try {
+    const result = await runUpdateWithFallback(
+      async (nextPayload) =>
+        auth.context.supabase
+          .from("images")
+          .update(nextPayload)
+          .eq("id", id)
+          .select("*")
+          .maybeSingle(),
+      payload,
+    );
+    data = result.data;
+  } catch (error) {
+    return adminApiError(error instanceof Error ? error.message : "Image update failed.", 500);
   }
 
   if (!data) {
@@ -88,37 +122,6 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     return adminApiError("Image id is required.", 400);
   }
 
-  const searchParams = new URL(request.url).searchParams;
-  const requestedBucket = searchParams.get("bucket")?.trim() || "images";
-
-  const { data: existing, error: existingError } = await auth.context.supabase
-    .from("images")
-    .select("id, storage_path")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (existingError) {
-    return adminApiError(existingError.message, 500);
-  }
-
-  if (!existing) {
-    return adminApiError("Image not found.", 404);
-  }
-
-  const storagePath =
-    typeof existing.storage_path === "string" ? existing.storage_path.trim() : "";
-  const bucket = requestedBucket;
-
-  if (storagePath) {
-    const { error: storageError } = await auth.context.supabase.storage
-      .from(bucket)
-      .remove([storagePath]);
-
-    if (storageError) {
-      return adminApiError(storageError.message, 500);
-    }
-  }
-
   const { error: deleteError } = await auth.context.supabase
     .from("images")
     .delete()
@@ -130,6 +133,6 @@ export async function DELETE(request: Request, { params }: RouteContext) {
 
   return NextResponse.json({
     deletedId: id,
-    removedStoragePath: storagePath || null,
+    removedStoragePath: null,
   });
 }

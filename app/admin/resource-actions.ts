@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { getAdminResourceConfig, type AdminResourceConfig } from "@/lib/admin-resources";
 import { IMMUTABLE_COLUMNS, parseEditablePayload } from "@/lib/admin-form";
+import { getMissingColumnName } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
 function errorMessage(error: unknown) {
@@ -62,8 +63,8 @@ function parsePayload(formData: FormData, raw: FormDataEntryValue | null) {
     return fieldPayload;
   }
 
-  if (typeof raw !== "string") {
-    throw new Error("Payload is required.");
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    throw new Error("Please fill in at least one field.");
   }
 
   let parsed: unknown;
@@ -125,6 +126,54 @@ function errorRedirect(slug: string, message: string) {
 function revalidateResource(slug: string) {
   revalidatePath(`/admin/${slug}`);
   revalidatePath("/admin/dashboard");
+}
+
+async function runInsertWithFallback(
+  insert: (payload: Record<string, unknown>) => Promise<{ error: { message: string } | null }>,
+  payload: Record<string, unknown>,
+) {
+  const nextPayload = { ...payload };
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const result = await insert(nextPayload);
+
+    if (!result.error) {
+      return;
+    }
+
+    const missingColumn = getMissingColumnName(result.error.message);
+
+    if (missingColumn && missingColumn in nextPayload) {
+      delete nextPayload[missingColumn];
+      continue;
+    }
+
+    throw new Error(result.error.message);
+  }
+}
+
+async function runUpdateWithFallback(
+  update: (payload: Record<string, unknown>) => Promise<{ error: { message: string } | null }>,
+  payload: Record<string, unknown>,
+) {
+  const nextPayload = { ...payload };
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const result = await update(nextPayload);
+
+    if (!result.error) {
+      return;
+    }
+
+    const missingColumn = getMissingColumnName(result.error.message);
+
+    if (missingColumn && missingColumn in nextPayload) {
+      delete nextPayload[missingColumn];
+      continue;
+    }
+
+    throw new Error(result.error.message);
+  }
 }
 
 async function findDefaultTermTypeId(
@@ -216,11 +265,10 @@ export async function createResourceAction(formData: FormData) {
       user.id,
       supabase,
     );
-    const { error } = await supabase.from(table).insert(payload);
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    await runInsertWithFallback(
+      async (nextPayload) => supabase.from(table).insert(nextPayload),
+      payload,
+    );
 
     revalidateResource(slug);
   } catch (error) {
@@ -243,12 +291,10 @@ export async function updateResourceAction(formData: FormData) {
       parsePayload(formData, formData.get("payload")),
       user.id,
     );
-
-    const { error } = await supabase.from(table).update(payload).eq("id", id);
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    await runUpdateWithFallback(
+      async (nextPayload) => supabase.from(table).update(nextPayload).eq("id", id),
+      payload,
+    );
 
     revalidateResource(slug);
   } catch (error) {

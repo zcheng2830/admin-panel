@@ -110,6 +110,10 @@ function visibleColumns(columns: string[]) {
   });
 }
 
+function visibleFields(fields: EditableField[]) {
+  return fields.filter((field) => field.type !== "json");
+}
+
 function fieldInput(field: EditableField) {
   const fieldName = `field:${field.column}`;
   const defaultValue = formatFieldValue(field.value, field.type);
@@ -214,7 +218,7 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
   const createColumns = editableColumns.length
     ? editableColumns
     : visibleColumns(IMAGE_PREFERRED_COLUMNS.filter((column) => !IMMUTABLE_COLUMNS.has(column)));
-  const createFields = buildEditableFields(createColumns);
+  const createFields = visibleFields(buildEditableFields(createColumns));
 
   const banner = feedback(params.status, params.message);
 
@@ -269,7 +273,6 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
           <input type="hidden" name="bucket" value="images" />
           <input type="hidden" name="folder" value="admin-uploads" />
           <input type="hidden" name="url_column" value="url" />
-          <input type="hidden" name="path_column" value="storage_path" />
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" name="create_row" defaultChecked className="size-4" />
             Also create an `images` table row after upload
@@ -280,20 +283,9 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
             </div>
           ) : (
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              No editable columns were inferred. Use advanced JSON payload below when needed.
+              No editable form fields are available for image creation.
             </p>
           )}
-          <details className="rounded-xl border border-slate-200 bg-white p-3">
-            <summary className="cursor-pointer text-sm font-medium text-slate-800">
-              Advanced JSON payload
-            </summary>
-            <textarea
-              name="payload"
-              defaultValue=""
-              placeholder='{"title": "Uploaded from admin"}'
-              className="mt-3 h-24 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
-            />
-          </details>
           <button
             type="submit"
             className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -306,7 +298,7 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
       <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-900">Create Image Row</h3>
         <p className="mt-2 text-sm text-slate-600">
-          Fill in the fields you want to set. Blank text/number/JSON fields are ignored, and storage/admin fields are handled for you.
+          Fill in the fields you want to set. Blank fields are ignored, and storage/admin fields are handled for you.
         </p>
         <form action={createImageAction} className="mt-4 space-y-3">
           {createFields.length > 0 ? (
@@ -315,20 +307,9 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
             </div>
           ) : (
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              No editable columns were inferred. Use advanced JSON payload below.
+              No editable form fields are available for image creation.
             </p>
           )}
-          <details className="rounded-xl border border-slate-200 bg-white p-3">
-            <summary className="cursor-pointer text-sm font-medium text-slate-800">
-              Advanced JSON payload
-            </summary>
-            <textarea
-              name="payload"
-              defaultValue=""
-              placeholder='{"url": "https://example.com/image.jpg"}'
-              className="mt-3 h-28 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
-            />
-          </details>
           <button
             type="submit"
             className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -353,9 +334,11 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
             const rowEditableColumns = editableColumns.filter((column) => {
               return Object.prototype.hasOwnProperty.call(metadata, column);
             });
-            const updateFields = buildEditableFields(
-              rowEditableColumns.length ? rowEditableColumns : visibleColumns(Object.keys(metadata)),
-              row,
+            const updateFields = visibleFields(
+              buildEditableFields(
+                rowEditableColumns.length ? rowEditableColumns : visibleColumns(Object.keys(metadata)),
+                row,
+              ),
             );
 
             return (
@@ -397,16 +380,6 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
                               {updateFields.map((field) => fieldInput(field))}
                             </div>
                           )}
-                          <details className="rounded-xl border border-slate-200 bg-white p-3">
-                            <summary className="cursor-pointer text-sm font-medium text-slate-800">
-                              Advanced JSON payload
-                            </summary>
-                            <textarea
-                              name="payload"
-                              defaultValue={JSON.stringify(metadata, null, 2)}
-                              className="mt-3 h-28 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
-                            />
-                          </details>
                           <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="submit"

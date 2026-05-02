@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { IMMUTABLE_COLUMNS, parseEditablePayload } from "@/lib/admin-form";
+import { getMissingColumnName } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
 function errorMessage(error: unknown) {
@@ -68,7 +69,11 @@ function parsePayload(formData: FormData, raw: FormDataEntryValue | null, allowE
   }
 
   if (typeof raw !== "string") {
-    throw new Error("Payload is required.");
+    if (allowEmpty) {
+      return {};
+    }
+
+    throw new Error("Please fill in at least one field.");
   }
 
   if (!raw.trim()) {
@@ -76,7 +81,7 @@ function parsePayload(formData: FormData, raw: FormDataEntryValue | null, allowE
       return {};
     }
 
-    throw new Error("Payload is required.");
+    throw new Error("Please fill in at least one field.");
   }
 
   let parsed: unknown;
@@ -149,6 +154,54 @@ function revalidateAdmin() {
   revalidatePath("/admin/dashboard");
 }
 
+async function runInsertWithFallback(
+  insert: (payload: Record<string, unknown>) => Promise<{ error: { message: string } | null }>,
+  payload: Record<string, unknown>,
+) {
+  const nextPayload = { ...payload };
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const result = await insert(nextPayload);
+
+    if (!result.error) {
+      return;
+    }
+
+    const missingColumn = getMissingColumnName(result.error.message);
+
+    if (missingColumn && missingColumn in nextPayload) {
+      delete nextPayload[missingColumn];
+      continue;
+    }
+
+    throw new Error(result.error.message);
+  }
+}
+
+async function runUpdateWithFallback(
+  update: (payload: Record<string, unknown>) => Promise<{ error: { message: string } | null }>,
+  payload: Record<string, unknown>,
+) {
+  const nextPayload = { ...payload };
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const result = await update(nextPayload);
+
+    if (!result.error) {
+      return;
+    }
+
+    const missingColumn = getMissingColumnName(result.error.message);
+
+    if (missingColumn && missingColumn in nextPayload) {
+      delete nextPayload[missingColumn];
+      continue;
+    }
+
+    throw new Error(result.error.message);
+  }
+}
+
 function applyImageDefaults(payload: Record<string, unknown>, userId: string) {
   return {
     ...payload,
@@ -168,11 +221,10 @@ export async function createImageAction(formData: FormData) {
       parsePayload(formData, formData.get("payload")),
       user.id,
     );
-    const { error } = await supabase.from("images").insert(payload);
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    await runInsertWithFallback(
+      async (nextPayload) => supabase.from("images").insert(nextPayload),
+      payload,
+    );
 
     revalidateAdmin();
   } catch (error) {
@@ -194,11 +246,10 @@ export async function updateImageAction(formData: FormData) {
       updated_by_user_id: user.id,
     };
 
-    const { error } = await supabase.from("images").update(payload).eq("id", id);
-
-    if (error) {
-      throw new Error(error.message);
-    }
+    await runUpdateWithFallback(
+      async (nextPayload) => supabase.from("images").update(nextPayload).eq("id", id),
+      payload,
+    );
 
     revalidateAdmin();
   } catch (error) {
@@ -215,31 +266,6 @@ export async function deleteImageAction(formData: FormData) {
 
   try {
     const id = parseId(formData.get("id"));
-    const { data: existingRow, error: readError } = await supabase
-      .from("images")
-      .select("storage_path")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (readError) {
-      throw new Error(readError.message);
-    }
-
-    const storagePath =
-      typeof existingRow?.storage_path === "string"
-        ? existingRow.storage_path.trim()
-        : "";
-
-    if (storagePath) {
-      const { error: storageError } = await supabase.storage
-        .from("images")
-        .remove([storagePath]);
-
-      if (storageError) {
-        throw new Error(storageError.message);
-      }
-    }
-
     const { error } = await supabase.from("images").delete().eq("id", id);
 
     if (error) {
@@ -264,7 +290,6 @@ export async function uploadImageAction(formData: FormData) {
     const folder = parseOptionalString(formData.get("folder"));
     const shouldCreateRow = formData.get("create_row") === "on";
     const urlColumn = parseOptionalString(formData.get("url_column")) || "url";
-    const pathColumn = parseOptionalString(formData.get("path_column"));
     const storagePath = createStoragePath(folder, file.name);
 
     const { error: uploadError } = await supabase.storage
@@ -286,19 +311,14 @@ export async function uploadImageAction(formData: FormData) {
 
       payload[urlColumn] = publicUrl;
 
-      if (pathColumn) {
-        payload[pathColumn] = storagePath;
-      }
-
       if (Object.keys(payload).length === 0) {
         throw new Error("Payload has no editable columns for image row creation.");
       }
 
-      const { error: insertError } = await supabase.from("images").insert(payload);
-
-      if (insertError) {
-        throw new Error(insertError.message);
-      }
+      await runInsertWithFallback(
+        async (nextPayload) => supabase.from("images").insert(nextPayload),
+        payload,
+      );
 
       target = "/admin/images?status=uploaded_created";
     }

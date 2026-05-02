@@ -80,3 +80,25 @@ export function sanitizeNextPath(nextPath: string | null | undefined) {
 
   return nextPath;
 }
+
+export function isMissingSchemaError(error: { code?: string | null; message?: string } | null) {
+  if (!error) {
+    return false;
+  }
+
+  const message = error.message?.toLowerCase() ?? "";
+
+  return (
+    error.code === "42P01" ||
+    error.code === "42703" ||
+    message.includes("does not exist") ||
+    message.includes("schema cache") ||
+    message.includes("could not find the table") ||
+    message.includes("could not find the '")
+  );
+}
+
+export function getMissingColumnName(message: string) {
+  const match = message.match(/could not find the '([^']+)' column/i);
+  return match?.[1] ?? null;
+}

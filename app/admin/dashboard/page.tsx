@@ -295,9 +295,7 @@ export default async function AdminDashboardPage() {
       <section className="grid gap-4 xl:grid-cols-3">
         <div className="rounded-3xl border border-white/40 bg-white/85 p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900">Top Liked Captions</h3>
-          {stats.engagement.topLikedCaptions.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No caption_likes rows found.</p>
-          ) : (
+          {stats.engagement.topLikedCaptions.length > 0 ? (
             <ul className="mt-3 space-y-2">
               {stats.engagement.topLikedCaptions.map((item) => (
                 <li
@@ -309,6 +307,8 @@ export default async function AdminDashboardPage() {
                 </li>
               ))}
             </ul>
+          ) : (
+            <p className="mt-3 text-sm text-slate-600">No like activity available.</p>
           )}
         </div>
 
@@ -333,9 +333,7 @@ export default async function AdminDashboardPage() {
 
         <div className="rounded-3xl border border-white/40 bg-white/85 p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900">Top Saves by User</h3>
-          {stats.engagement.userSavedActivity.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No caption_saved rows found.</p>
-          ) : (
+          {stats.engagement.userSavedActivity.length > 0 ? (
             <ul className="mt-3 space-y-2">
               {stats.engagement.userSavedActivity.map((item) => (
                 <li
@@ -347,6 +345,8 @@ export default async function AdminDashboardPage() {
                 </li>
               ))}
             </ul>
+          ) : (
+            <p className="mt-3 text-sm text-slate-600">No save activity available.</p>
           )}
         </div>
       </section>
@@ -355,17 +355,6 @@ export default async function AdminDashboardPage() {
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           Dashboard detail rows were sampled for performance: {stats.sampleInfo.profiles} profiles,{" "}
           {stats.sampleInfo.images} images, {stats.sampleInfo.captions} captions.
-        </section>
-      ) : null}
-
-      {stats.warnings.length > 0 ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-semibold">Optional metrics warning</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5">
-            {stats.warnings.map((warning, index) => (
-              <li key={`${warning}-${index}`}>{warning}</li>
-            ))}
-          </ul>
         </section>
       ) : null}
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isMissingSchemaError } from "@/lib/admin-utils";
 import { adminApiError, authorizeAdminApiRequest } from "@/lib/auth/admin-api";
 
 function parseLimit(searchParams: URLSearchParams, fallback = 200, max = 700) {
@@ -59,11 +60,10 @@ export async function GET(request: Request) {
 
   let { data, error, count } = await query;
 
-  if (error?.code === "42703") {
+  if (isMissingSchemaError(error)) {
     let fallbackQuery = auth.context.supabase
       .from("captions")
       .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
       .range(offset, rangeTo);
 
     if (imageId) {
