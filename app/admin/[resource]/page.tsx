@@ -117,21 +117,6 @@ function fieldInput(field: EditableField) {
     );
   }
 
-  if (field.type === "json") {
-    return (
-      <label key={field.column} className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
-        {field.column}
-        <input type="hidden" name={`present:${field.column}`} value="1" />
-        <input type="hidden" name={`type:${field.column}`} value={field.type} />
-        <textarea
-          name={fieldName}
-          defaultValue={defaultValue}
-          className="mt-1 h-24 w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-xs normal-case tracking-normal text-slate-800"
-        />
-      </label>
-    );
-  }
-
   return (
     <label key={field.column} className="space-y-1 text-xs uppercase tracking-[0.14em] text-slate-500">
       {field.column}

@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { IMMUTABLE_COLUMNS, parseEditablePayload } from "@/lib/admin-form";
 import { getMissingColumnName } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
@@ -15,106 +14,45 @@ function errorMessage(error: unknown) {
   return "Unknown error";
 }
 
+function errorRedirect(message: string) {
+  return `/admin/images?status=error&message=${encodeURIComponent(message)}`;
+}
+
+function revalidateAdmin() {
+  revalidatePath("/admin/images");
+  revalidatePath("/admin/dashboard");
+}
+
 function parseId(raw: FormDataEntryValue | null) {
-  if (typeof raw !== "string") {
+  if (typeof raw !== "string" || raw.trim().length === 0) {
     throw new Error("Image id is required.");
   }
 
   const trimmed = raw.trim();
-
-  if (!trimmed) {
-    throw new Error("Image id is required.");
-  }
-
   const numeric = Number(trimmed);
-
-  if (Number.isFinite(numeric) && String(numeric) === trimmed) {
-    return numeric;
-  }
-
-  return trimmed;
+  return Number.isFinite(numeric) && String(numeric) === trimmed ? numeric : trimmed;
 }
 
-function parsePayload(formData: FormData, raw: FormDataEntryValue | null, allowEmpty = false) {
-  let fieldPayload: Record<string, unknown> | null;
-
-  try {
-    fieldPayload = parseEditablePayload(formData);
-  } catch (error) {
-    if (
-      allowEmpty &&
-      error instanceof Error &&
-      error.message === "No editable field values were provided."
-    ) {
-      if (typeof raw === "string" && raw.trim().length > 0) {
-        fieldPayload = null;
-      } else {
-        return {};
-      }
-    }
-
-    if (!(error instanceof Error) || error.message !== "No editable field values were provided.") {
-      throw error;
-    }
-
-    fieldPayload = null;
-  }
-
-  if (fieldPayload) {
-    return fieldPayload;
-  }
-
-  if (raw === null && allowEmpty) {
-    return {};
-  }
-
-  if (typeof raw !== "string") {
-    if (allowEmpty) {
-      return {};
-    }
-
-    throw new Error("Please fill in at least one field.");
-  }
-
-  if (!raw.trim()) {
-    if (allowEmpty) {
-      return {};
-    }
-
-    throw new Error("Please fill in at least one field.");
-  }
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("Payload must be valid JSON.");
-  }
-
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Payload must be a JSON object.");
-  }
-
-  const cleaned = Object.fromEntries(
-    Object.entries(parsed).filter(([key, value]) => {
-      return !IMMUTABLE_COLUMNS.has(key) && value !== "";
-    }),
-  );
-
-  if (!allowEmpty && Object.keys(cleaned).length === 0) {
-    throw new Error("Payload has no editable columns.");
-  }
-
-  return cleaned;
+function parseText(raw: FormDataEntryValue | null) {
+  return typeof raw === "string" ? raw.trim() : "";
 }
 
-function parseOptionalString(raw: FormDataEntryValue | null) {
-  if (typeof raw !== "string") {
-    return "";
+function parseOptionalNumber(raw: FormDataEntryValue | null) {
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return null;
   }
 
-  return raw.trim();
+  const parsed = Number(raw);
+
+  if (!Number.isFinite(parsed)) {
+    throw new Error("Numbers must be valid.");
+  }
+
+  return parsed;
+}
+
+function parseCheckbox(raw: FormDataEntryValue | null) {
+  return raw === "on";
 }
 
 function parseRequiredFile(raw: FormDataEntryValue | null) {
@@ -130,28 +68,10 @@ function sanitizeFileName(name: string) {
   return safe || "image-upload";
 }
 
-function sanitizeFolder(folder: string) {
-  return folder
-    .split("/")
-    .map((part) => part.replace(/[^a-zA-Z0-9_-]/g, "").trim())
-    .filter(Boolean)
-    .join("/");
-}
-
-function createStoragePath(folder: string, originalFileName: string) {
-  const normalizedFolder = sanitizeFolder(folder);
+function createStoragePath(originalFileName: string) {
   const random = Math.random().toString(36).slice(2, 8);
   const fileName = `${Date.now()}-${random}-${sanitizeFileName(originalFileName)}`;
-  return normalizedFolder ? `${normalizedFolder}/${fileName}` : fileName;
-}
-
-function errorRedirect(message: string) {
-  return `/admin/images?status=error&message=${encodeURIComponent(message)}`;
-}
-
-function revalidateAdmin() {
-  revalidatePath("/admin/images");
-  revalidatePath("/admin/dashboard");
+  return `admin-uploads/${fileName}`;
 }
 
 async function runInsertWithFallback(
@@ -160,7 +80,7 @@ async function runInsertWithFallback(
 ) {
   const nextPayload = { ...payload };
 
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
     const result = await insert(nextPayload);
 
     if (!result.error) {
@@ -184,7 +104,7 @@ async function runUpdateWithFallback(
 ) {
   const nextPayload = { ...payload };
 
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
     const result = await update(nextPayload);
 
     if (!result.error) {
@@ -202,25 +122,51 @@ async function runUpdateWithFallback(
   }
 }
 
-function applyImageDefaults(payload: Record<string, unknown>, userId: string) {
-  return {
-    ...payload,
-    ...(payload.user_id === undefined ? { user_id: userId } : {}),
-    ...(payload.created_by_user_id === undefined ? { created_by_user_id: userId } : {}),
-    ...(payload.updated_by_user_id === undefined ? { updated_by_user_id: userId } : {}),
+function buildImagePayload(formData: FormData, options?: { requireUrl?: boolean }) {
+  const url = parseText(formData.get("url"));
+  const title = parseText(formData.get("title"));
+  const imageDescription = parseText(formData.get("image_description"));
+  const width = parseOptionalNumber(formData.get("width"));
+  const height = parseOptionalNumber(formData.get("height"));
+  const isPublic = parseCheckbox(formData.get("is_public"));
+  const isCommonUse = parseCheckbox(formData.get("is_common_use"));
+
+  if (options?.requireUrl && !url) {
+    throw new Error("Image URL is required.");
+  }
+
+  const payload: Record<string, unknown> = {
+    url,
+    is_public: isPublic,
+    is_common_use: isCommonUse,
   };
+
+  if (title) {
+    payload.title = title;
+  }
+
+  if (imageDescription) {
+    payload.image_description = imageDescription;
+  }
+
+  if (width !== null) {
+    payload.width = width;
+  }
+
+  if (height !== null) {
+    payload.height = height;
+  }
+
+  return payload;
 }
 
 export async function createImageAction(formData: FormData) {
-  const { supabase, user } = await requireSuperadmin();
-
+  const { supabase } = await requireSuperadmin();
   let target = "/admin/images?status=created";
 
   try {
-    const payload = applyImageDefaults(
-      parsePayload(formData, formData.get("payload")),
-      user.id,
-    );
+    const payload = buildImagePayload(formData, { requireUrl: true });
+
     await runInsertWithFallback(
       async (nextPayload) => supabase.from("images").insert(nextPayload),
       payload,
@@ -235,16 +181,12 @@ export async function createImageAction(formData: FormData) {
 }
 
 export async function updateImageAction(formData: FormData) {
-  const { supabase, user } = await requireSuperadmin();
-
+  const { supabase } = await requireSuperadmin();
   let target = "/admin/images?status=updated";
 
   try {
     const id = parseId(formData.get("id"));
-    const payload = {
-      ...parsePayload(formData, formData.get("payload")),
-      updated_by_user_id: user.id,
-    };
+    const payload = buildImagePayload(formData, { requireUrl: true });
 
     await runUpdateWithFallback(
       async (nextPayload) => supabase.from("images").update(nextPayload).eq("id", id),
@@ -261,7 +203,6 @@ export async function updateImageAction(formData: FormData) {
 
 export async function deleteImageAction(formData: FormData) {
   const { supabase } = await requireSuperadmin();
-
   let target = "/admin/images?status=deleted";
 
   try {
@@ -281,19 +222,16 @@ export async function deleteImageAction(formData: FormData) {
 }
 
 export async function uploadImageAction(formData: FormData) {
-  const { supabase, user } = await requireSuperadmin();
+  const { supabase } = await requireSuperadmin();
   let target = "/admin/images?status=uploaded";
 
   try {
     const file = parseRequiredFile(formData.get("file"));
-    const bucket = parseOptionalString(formData.get("bucket")) || "images";
-    const folder = parseOptionalString(formData.get("folder"));
-    const shouldCreateRow = formData.get("create_row") === "on";
-    const urlColumn = parseOptionalString(formData.get("url_column")) || "url";
-    const storagePath = createStoragePath(folder, file.name);
+    const shouldCreateRow = parseCheckbox(formData.get("create_row"));
+    const storagePath = createStoragePath(file.name);
 
     const { error: uploadError } = await supabase.storage
-      .from(bucket)
+      .from("images")
       .upload(storagePath, file, { upsert: false, contentType: file.type || undefined });
 
     if (uploadError) {
@@ -301,19 +239,12 @@ export async function uploadImageAction(formData: FormData) {
     }
 
     if (shouldCreateRow) {
-      const payload: Record<string, unknown> = applyImageDefaults(
-        parsePayload(formData, formData.get("payload"), true),
-        user.id,
-      );
       const {
         data: { publicUrl },
-      } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+      } = supabase.storage.from("images").getPublicUrl(storagePath);
 
-      payload[urlColumn] = publicUrl;
-
-      if (Object.keys(payload).length === 0) {
-        throw new Error("Payload has no editable columns for image row creation.");
-      }
+      const payload = buildImagePayload(formData);
+      payload.url = publicUrl;
 
       await runInsertWithFallback(
         async (nextPayload) => supabase.from("images").insert(nextPayload),
