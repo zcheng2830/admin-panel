@@ -10,7 +10,7 @@ const SYSTEM_MANAGED_COLUMN_PATTERNS = [
   /^updated_by_profile_id$/i,
 ];
 
-export type EditableFieldType = "boolean" | "json" | "number" | "string";
+export type EditableFieldType = "boolean" | "number" | "string";
 
 export type EditableField = {
   column: string;
@@ -31,7 +31,7 @@ function normalizeFieldType(value: FormDataEntryValue | null): EditableFieldType
     return "string";
   }
 
-  if (value === "boolean" || value === "json" || value === "number" || value === "string") {
+  if (value === "boolean" || value === "number" || value === "string") {
     return value;
   }
 
@@ -57,14 +57,6 @@ function parseTypedValue(column: string, rawValue: string, type: EditableFieldTy
     }
 
     return parsed;
-  }
-
-  if (type === "json") {
-    try {
-      return JSON.parse(rawValue);
-    } catch {
-      throw new Error(`${column} must be valid JSON.`);
-    }
   }
 
   return rawValue;
@@ -136,10 +128,6 @@ export function inferEditableFieldType(value: unknown): EditableFieldType {
     return "number";
   }
 
-  if (value !== null && typeof value === "object") {
-    return "json";
-  }
-
   return "string";
 }
 
@@ -161,21 +149,13 @@ export function buildEditableFields(columns: string[], row?: DataRow): EditableF
   });
 }
 
-export function formatFieldValue(value: unknown, type: EditableFieldType) {
+export function formatFieldValue(value: unknown) {
   if (value === null || value === undefined) {
     return "";
   }
 
-  if (type === "json") {
-    if (typeof value === "string") {
-      return value;
-    }
-
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch {
-      return "";
-    }
+  if (value !== null && typeof value === "object") {
+    return "";
   }
 
   if (typeof value === "string") {

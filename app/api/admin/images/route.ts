@@ -65,6 +65,22 @@ function parseBoolean(value: FormDataEntryValue | null, fallback = false) {
   return ["on", "true", "1", "yes"].includes(value.toLowerCase());
 }
 
+function parseOptionalNumber(value: FormDataEntryValue | null, field: string) {
+  const raw = parseOptionalString(value);
+
+  if (!raw) {
+    return null;
+  }
+
+  const parsed = Number(raw);
+
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${field} must be a valid number.`);
+  }
+
+  return parsed;
+}
+
 function sanitizeFileName(name: string) {
   const safe = name
     .replace(/[^a-zA-Z0-9._-]/g, "-")
@@ -108,26 +124,6 @@ function cleanPayload(raw: unknown) {
   return cleaned;
 }
 
-function parsePayloadFormValue(raw: FormDataEntryValue | null) {
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    return {};
-  }
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("Payload must be valid JSON.");
-  }
-
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Payload must be a JSON object.");
-  }
-
-  return parsed as Record<string, unknown>;
-}
-
 async function runInsertWithFallback(
   insert: (payload: Record<string, unknown>) => Promise<{ data?: unknown; error: { message: string } | null }>,
   payload: Record<string, unknown>,
@@ -152,6 +148,41 @@ async function runInsertWithFallback(
   }
 
   throw new Error("Image insert failed.");
+}
+
+function buildMultipartImagePayload(formData: FormData, publicUrl: string) {
+  const title = parseOptionalString(formData.get("title"));
+  const imageDescription = parseOptionalString(formData.get("image_description"));
+  const userId = parseOptionalString(formData.get("user_id"));
+  const width = parseOptionalNumber(formData.get("width"), "Width");
+  const height = parseOptionalNumber(formData.get("height"), "Height");
+  const payload: Record<string, unknown> = {
+    url: publicUrl,
+    is_public: parseBoolean(formData.get("is_public")),
+    is_common_use: parseBoolean(formData.get("is_common_use")),
+  };
+
+  if (title) {
+    payload.title = title;
+  }
+
+  if (imageDescription) {
+    payload.image_description = imageDescription;
+  }
+
+  if (userId) {
+    payload.user_id = userId;
+  }
+
+  if (width !== null) {
+    payload.width = width;
+  }
+
+  if (height !== null) {
+    payload.height = height;
+  }
+
+  return payload;
 }
 
 export async function GET(request: Request) {
@@ -180,7 +211,7 @@ export async function GET(request: Request) {
   }
 
   if (search) {
-    query = query.or(`title.ilike.%${search}%,storage_path.ilike.%${search}%`);
+    query = query.or(`title.ilike.%${search}%,url.ilike.%${search}%`);
   }
 
   let { data, error, count } = await query;
@@ -259,22 +290,22 @@ export async function POST(request: Request) {
     }
 
     let bucket: string;
-    let title: string;
-    let userId: string;
     let createRow: boolean;
-    let payload: Record<string, unknown>;
     let storagePath: string;
+    let insertPayload: Record<string, unknown> | null = null;
 
     try {
       bucket = parseOptionalString(formData.get("bucket")) || "images";
       const folder = parseOptionalString(formData.get("folder")) || "admin-uploads";
-      title = parseOptionalString(formData.get("title"));
-      userId = parseOptionalString(formData.get("user_id"));
       createRow = parseBoolean(formData.get("create_row"), true);
-      const explicitStoragePath = parseOptionalString(formData.get("storage_path"));
-      payload = parsePayloadFormValue(formData.get("payload"));
-      storagePath =
-        explicitStoragePath || createStoragePath(folder, file.name || "image-upload");
+      storagePath = createStoragePath(folder, file.name || "image-upload");
+
+      if (createRow) {
+        const {
+          data: { publicUrl },
+        } = auth.context.supabase.storage.from(bucket).getPublicUrl(storagePath);
+        insertPayload = cleanPayload(buildMultipartImagePayload(formData, publicUrl));
+      }
     } catch (error) {
       return adminApiError(
         error instanceof Error ? error.message : "Invalid upload payload.",
@@ -295,22 +326,7 @@ export async function POST(request: Request) {
 
     let image: Record<string, unknown> | null = null;
 
-    if (createRow) {
-      let insertPayload: Record<string, unknown>;
-
-      try {
-        insertPayload = cleanPayload({
-          ...payload,
-          ...(title && payload.title === undefined ? { title } : {}),
-          ...(userId && payload.user_id === undefined ? { user_id: userId } : {}),
-        });
-      } catch (error) {
-        return adminApiError(
-          error instanceof Error ? error.message : "Invalid image row payload.",
-          400,
-        );
-      }
-
+    if (insertPayload) {
       try {
         const result = await runInsertWithFallback(
           async (nextPayload) =>

@@ -1,6 +1,6 @@
 import { PaginationControls } from "@/app/admin/components/pagination-controls";
 import { RecordTable } from "@/app/admin/components/record-table";
-import { asRows } from "@/lib/admin-utils";
+import { asRows, isMissingSchemaError } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
 type UsersPageProps = {
@@ -29,15 +29,6 @@ function parseNumber(raw: string | undefined, fallback: number, min: number, max
   return Math.min(Math.max(parsed, min), max);
 }
 
-function isSchemaError(error: { code?: string | null; message?: string } | null) {
-  if (!error) {
-    return false;
-  }
-
-  const message = error.message?.toLowerCase() ?? "";
-  return error.code === "42P01" || error.code === "42703" || message.includes("does not exist");
-}
-
 export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
   const params = await searchParams;
   const search = sanitizeSearch(params.q);
@@ -59,7 +50,7 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
 
   let { data, error, count } = await query;
 
-  if (isSchemaError(error)) {
+  if (isMissingSchemaError(error)) {
     let fallbackQuery = supabase
       .from("profiles")
       .select("*", { count: "exact" })
@@ -76,7 +67,7 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
     count = fallbackResult.count;
   }
 
-  if (isSchemaError(error)) {
+  if (isMissingSchemaError(error)) {
     const fallbackResult = await supabase
       .from("profiles")
       .select("*", { count: "exact" })
@@ -86,6 +77,22 @@ export default async function AdminUsersPage({ searchParams }: UsersPageProps) {
     error = fallbackResult.error;
     count = fallbackResult.count;
   }
+
+  if (isMissingSchemaError(error)) {
+    return (
+      <main className="space-y-5">
+        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <p className="text-xs uppercase tracking-[0.2em] text-amber-700">Unavailable</p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-900">Users</h2>
+          <p className="mt-3 text-sm text-amber-900">
+            This page is disabled because the `profiles` table is not present in this
+            project schema.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   const rows = asRows(data);
   const superadminCount = rows.filter((row) => row.is_superadmin === true).length;
   const totalCount = count ?? rows.length;

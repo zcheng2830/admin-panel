@@ -63,7 +63,7 @@ export function formatCell(value: unknown) {
   }
 
   if (typeof value === "object") {
-    return JSON.stringify(value);
+    return Array.isArray(value) ? `${value.length} items` : "Structured data";
   }
 
   return String(value);

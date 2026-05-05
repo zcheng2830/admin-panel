@@ -86,13 +86,9 @@ function visibleColumns(columns: string[], hiddenColumns: string[] = []) {
   });
 }
 
-function visibleFields(fields: EditableField[]) {
-  return fields.filter((field) => field.type !== "json");
-}
-
 function fieldInput(field: EditableField) {
   const fieldName = `field:${field.column}`;
-  const defaultValue = formatFieldValue(field.value, field.type);
+  const defaultValue = formatFieldValue(field.value);
 
   if (field.type === "boolean") {
     return (
@@ -154,6 +150,22 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
     .from(config.table)
     .select("*", { count: "exact" })
     .range(from, to);
+
+  if (isMissingSchemaError(error)) {
+    return (
+      <main className="space-y-5">
+        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <p className="text-xs uppercase tracking-[0.2em] text-amber-700">Unavailable</p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-900">{config.label}</h2>
+          <p className="mt-3 text-sm text-amber-900">
+            This admin resource is disabled because the database table is not present in this
+            project schema.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   const rows = asRows(data);
   const banner = feedback(query.status, query.message);
   const totalCount = count ?? rows.length;
@@ -169,11 +181,7 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
         preferredColumns.filter((column) => !IMMUTABLE_COLUMNS.has(column)),
         hiddenColumns,
       );
-  const createFields = visibleFields(buildEditableFields(createColumns));
-
-  if (isMissingSchemaError(error)) {
-    notFound();
-  }
+  const createFields = buildEditableFields(createColumns);
 
   return (
     <main className="space-y-5">
@@ -221,7 +229,8 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
             <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
               <h3 className="text-lg font-semibold text-slate-900">Create Row</h3>
               <p className="mt-2 text-sm text-slate-600">
-                Fill in the fields you want to set. Blank fields are ignored, and admin-managed IDs are filled automatically when possible.
+                Fill in the fields you want to set. Blank fields are ignored, and
+                system-managed IDs are kept out of the form.
               </p>
               <form action={createResourceAction} className="mt-4 space-y-3">
                 <input type="hidden" name="slug" value={config.slug} />
@@ -262,12 +271,12 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
                 const rowEditableColumns = editableColumns.filter((column) => {
                   return Object.prototype.hasOwnProperty.call(metadata, column);
                 });
-                const updateFields = visibleFields(buildEditableFields(
+                const updateFields = buildEditableFields(
                   rowEditableColumns.length
                     ? rowEditableColumns
                     : visibleColumns(Object.keys(metadata), hiddenColumns),
                   row,
-                ));
+                );
 
                 return (
                   <article

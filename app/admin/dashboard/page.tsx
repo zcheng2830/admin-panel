@@ -38,14 +38,22 @@ async function countRows(
 async function fetchRecentRows(
   supabase: Awaited<ReturnType<typeof requireSuperadmin>>["supabase"],
   table: string,
-  select: string,
-  orderColumn: string,
 ) {
-  const { data, error } = await supabase
-    .from(table)
-    .select(select)
-    .order(orderColumn, { ascending: false })
-    .limit(5);
+  const orderCandidates = ["created_datetime_utc", "created_at", "updated_at", "id"];
+
+  for (const orderColumn of orderCandidates) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .order(orderColumn, { ascending: false })
+      .limit(5);
+
+    if (!error) {
+      return asRows(data);
+    }
+  }
+
+  const { data, error } = await supabase.from(table).select("*").limit(5);
 
   if (error) {
     return [];
@@ -62,8 +70,8 @@ export default async function AdminDashboardPage() {
     countRows(supabase, "profiles"),
     countRows(supabase, "images"),
     countRows(supabase, "captions"),
-    fetchRecentRows(supabase, "images", "id, url, title, created_datetime_utc, created_at, is_public", "created_datetime_utc"),
-    fetchRecentRows(supabase, "captions", "id, caption, content, created_datetime_utc, created_at, is_public", "created_datetime_utc"),
+    fetchRecentRows(supabase, "images"),
+    fetchRecentRows(supabase, "captions"),
   ]);
 
   const countWarnings = [profiles, images, captions]

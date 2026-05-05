@@ -1,5 +1,5 @@
 import { PaginationControls } from "@/app/admin/components/pagination-controls";
-import { asRows, pickFirstString } from "@/lib/admin-utils";
+import { asRows, isMissingSchemaError, pickFirstString } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
 import {
@@ -111,6 +111,21 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
     data = fallback.data;
     error = fallback.error;
     count = fallback.count;
+  }
+
+  if (isMissingSchemaError(error)) {
+    return (
+      <main className="space-y-5">
+        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <p className="text-xs uppercase tracking-[0.2em] text-amber-700">Unavailable</p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-900">Images</h2>
+          <p className="mt-3 text-sm text-amber-900">
+            This page is disabled because the `images` table is not present in this
+            project schema.
+          </p>
+        </section>
+      </main>
+    );
   }
 
   const rows = asRows(data);
