@@ -1,7 +1,5 @@
 import Link from "next/link";
 
-import { getAdminResources } from "@/lib/admin-resources";
-import { isMissingSchemaError } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
 import { SignOutButton } from "./components/sign-out-button";
@@ -11,8 +9,8 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { supabase, user } = await requireSuperadmin();
-  const baseLinks = [
+  const { user } = await requireSuperadmin();
+  const navLinks = [
     { href: "/admin/dashboard", label: "Dashboard", subtitle: "Activity & trends" },
     { href: "/admin/users", label: "Users", subtitle: "Profiles (read-only)" },
     {
@@ -21,27 +19,9 @@ export default async function AdminLayout({
       subtitle: "Create / read / update / delete + upload",
     },
     { href: "/admin/captions", label: "Captions", subtitle: "Read & quality checks" },
+    { href: "/admin/terms", label: "Terms", subtitle: "Create / read / update / delete" },
+    { href: "/admin/humor-mix", label: "Humor Mix", subtitle: "Read / update" },
   ];
-
-  const resourceResults = await Promise.all(
-    getAdminResources().map(async (resource) => {
-      const { error } = await supabase
-        .from(resource.table)
-        .select("*", { count: "exact", head: true });
-
-      if (isMissingSchemaError(error)) {
-        return null;
-      }
-
-      return {
-        href: `/admin/${resource.slug}`,
-        label: resource.label,
-        subtitle: resource.subtitle,
-      };
-    }),
-  );
-
-  const navLinks = [...baseLinks, ...resourceResults.filter((link) => link !== null)];
 
   return (
     <div className="min-h-screen bg-[linear-gradient(135deg,_#f8fafc,_#e2e8f0_50%,_#dbeafe)] text-slate-900">
