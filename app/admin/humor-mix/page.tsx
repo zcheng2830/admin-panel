@@ -30,24 +30,14 @@ function displayValue(value: unknown) {
 export default async function AdminHumorMixPage({ searchParams }: HumorMixPageProps) {
   const params = await searchParams;
   const { supabase } = await requireSuperadmin();
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("humor_mix")
     .select("*")
     .order("id");
 
   if (isMissingSchemaError(error)) {
-    return (
-      <main className="space-y-5">
-        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
-          <p className="text-xs uppercase tracking-[0.2em] text-amber-700">Unavailable</p>
-          <h2 className="mt-2 text-2xl font-semibold text-slate-900">Humor Mix</h2>
-          <p className="mt-3 text-sm text-amber-900">
-            This page is disabled because the `humor_mix` table is not present in this
-            project schema.
-          </p>
-        </section>
-      </main>
-    );
+    data = [];
+    error = null;
   }
 
   const rows = (data ?? []) as Array<Record<string, unknown>>;

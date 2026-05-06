@@ -11,7 +11,70 @@ export type AdminResourceConfig = {
   hiddenColumns?: string[];
 };
 
+export type AdminTableLink = {
+  href: string;
+  label: string;
+  subtitle: string;
+  table: string;
+};
+
+export const PRIMARY_ADMIN_LINKS: readonly AdminTableLink[] = [
+  { href: "/admin/dashboard", label: "Dashboard", subtitle: "Activity & trends", table: "" },
+  { href: "/admin/users", label: "Users", subtitle: "Profiles (read-only)", table: "profiles" },
+  {
+    href: "/admin/images",
+    label: "Images",
+    subtitle: "Create / read / update / delete + upload",
+    table: "images",
+  },
+  {
+    href: "/admin/captions",
+    label: "Captions",
+    subtitle: "Read & quality checks",
+    table: "captions",
+  },
+  {
+    href: "/admin/terms",
+    label: "Terms",
+    subtitle: "Create / read / update / delete",
+    table: "terms",
+  },
+  { href: "/admin/humor-mix", label: "Humor Mix", subtitle: "Read / update", table: "humor_mix" },
+];
+
 const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
+  {
+    slug: "caption-votes",
+    label: "Caption Votes",
+    subtitle: "Read-only",
+    table: "caption_votes",
+    mode: "read",
+    preferredColumns: ["id", "caption_id", "profile_id", "user_id", "vote_value", "created_at"],
+  },
+  {
+    slug: "caption-likes",
+    label: "Caption Likes",
+    subtitle: "Read-only",
+    table: "caption_likes",
+    mode: "read",
+    preferredColumns: ["id", "caption_id", "profile_id", "user_id", "created_at"],
+  },
+  {
+    slug: "caption-saved",
+    label: "Saved Captions",
+    subtitle: "Read-only",
+    table: "caption_saved",
+    mode: "read",
+    preferredColumns: ["id", "caption_id", "profile_id", "user_id", "created_at"],
+  },
+  {
+    slug: "reported-captions",
+    label: "Reported Captions",
+    subtitle: "Read-only",
+    table: "reported_captions",
+    mode: "read",
+    preferredColumns: ["id", "caption_id", "profile_id", "reason", "status", "created_at"],
+  },
   {
     slug: "humor-flavors",
     label: "Humor Flavors",
@@ -36,14 +99,6 @@ const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
     ],
   },
   {
-    slug: "humor-mix",
-    label: "Humor Mix",
-    subtitle: "Read / update",
-    table: "humor_mix",
-    mode: "update",
-    preferredColumns: ["id", "name", "weight", "updated_at"],
-  },
-  {
     slug: "example-captions",
     label: "Example Captions",
     subtitle: "Create / read / update / delete",
@@ -53,13 +108,12 @@ const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
     hiddenColumns: ["created_by_user_id", "updated_by_user_id"],
   },
   {
-    slug: "terms",
-    label: "Terms",
-    subtitle: "Create / read / update / delete",
-    table: "terms",
-    mode: "crud",
-    preferredColumns: ["id", "term", "category", "created_at", "updated_at"],
-    hiddenColumns: ["term_type_id", "created_by_user_id", "updated_by_user_id"],
+    slug: "term-types",
+    label: "Term Types",
+    subtitle: "Read-only",
+    table: "term_types",
+    mode: "read",
+    preferredColumns: ["id", "name", "slug", "description", "created_at", "updated_at"],
   },
   {
     slug: "caption-requests",
@@ -111,7 +165,7 @@ const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
     preferredColumns: ["id", "provider", "model", "created_at"],
   },
   {
-    slug: "allowed-signup-domains",
+    slug: "allowed-domains",
     label: "Allowed Signup Domains",
     subtitle: "Create / read / update / delete",
     table: "allowed_signup_domains",
@@ -119,19 +173,37 @@ const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
     preferredColumns: ["id", "domain", "created_at", "updated_at"],
   },
   {
-    slug: "whitelisted-email-addresses",
+    slug: "whitelisted-emails",
     label: "Whitelisted E-mail Addresses",
     subtitle: "Create / read / update / delete",
-    table: "whitelisted_email_addresses",
+    table: "whitelisted_emails",
     mode: "crud",
     preferredColumns: ["id", "email", "created_at", "updated_at"],
   },
 ] as const;
+
+const RESOURCE_ALIASES = new Map([
+  ["allowed-signup-domains", "allowed-domains"],
+  ["whitelisted-email-addresses", "whitelisted-emails"],
+]);
 
 export function getAdminResources() {
   return ADMIN_RESOURCES;
 }
 
 export function getAdminResourceConfig(slug: string) {
-  return ADMIN_RESOURCES.find((resource) => resource.slug === slug) ?? null;
+  const normalizedSlug = RESOURCE_ALIASES.get(slug) ?? slug;
+  return ADMIN_RESOURCES.find((resource) => resource.slug === normalizedSlug) ?? null;
+}
+
+export function getDomainModelTables() {
+  const primaryTables = PRIMARY_ADMIN_LINKS.filter((link) => link.table);
+  const resourceTables = ADMIN_RESOURCES.map((resource) => ({
+    href: `/admin/${resource.slug}`,
+    label: resource.label,
+    subtitle: resource.subtitle,
+    table: resource.table,
+  }));
+
+  return [...primaryTables, ...resourceTables];
 }

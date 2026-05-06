@@ -9,9 +9,9 @@ Next.js admin interface for Supabase data, including:
 - `/admin/captions` read-only caption explorer with `image_id` filtering and per-page caption rating statistics
 - Pagination controls on major data pages (`users`, `images`, `captions`, and `/admin/[resource]`)
 - Additional resource sections under `/admin/*`:
-  - Read-only: `humor_flavors`, `humor_flavor_steps`, `caption_requests`, `llm_prompt_chains`, `llm_responses`
+  - Read-only: `caption_votes`, `caption_likes`, `caption_saved`, `reported_captions`, `humor_flavors`, `humor_flavor_steps`, `term_types`, `caption_requests`, `llm_prompt_chains`, `llm_responses`
   - Read/update: `humor_mix`
-  - CRUD: `example_captions`, `terms`, `caption_examples`, `llm_models`, `llm_providers`, `allowed_signup_domains`, `whitelisted_email_addresses`
+  - CRUD: `example_captions`, `terms`, `caption_examples`, `llm_models`, `llm_providers`, `allowed_signup_domains`, `whitelisted_emails`
 
 All `/admin/*` routes are protected by:
 

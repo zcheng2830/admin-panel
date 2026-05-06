@@ -1,4 +1,7 @@
-import { asRows } from "@/lib/admin-utils";
+import Link from "next/link";
+
+import { getDomainModelTables } from "@/lib/admin-resources";
+import { asRows, isMissingSchemaError } from "@/lib/admin-utils";
 import { requireSuperadmin } from "@/lib/auth/guards";
 
 function formatNumber(value: number) {
@@ -29,10 +32,14 @@ async function countRows(
   const { count, error } = await supabase.from(table).select("*", { count: "exact", head: true });
 
   if (error) {
-    return { error: error.message, value: 0 };
+    return {
+      available: false,
+      error: isMissingSchemaError(error) ? null : error.message,
+      value: 0,
+    };
   }
 
-  return { error: null, value: count ?? 0 };
+  return { available: true, error: null, value: count ?? 0 };
 }
 
 async function fetchRecentRows(
@@ -65,13 +72,20 @@ async function fetchRecentRows(
 export default async function AdminDashboardPage() {
   const context = await requireSuperadmin();
   const { supabase } = context;
+  const domainTables = getDomainModelTables();
 
-  const [profiles, images, captions, recentImages, recentCaptions] = await Promise.all([
+  const [profiles, images, captions, recentImages, recentCaptions, domainCounts] = await Promise.all([
     countRows(supabase, "profiles"),
     countRows(supabase, "images"),
     countRows(supabase, "captions"),
     fetchRecentRows(supabase, "images"),
     fetchRecentRows(supabase, "captions"),
+    Promise.all(
+      domainTables.map(async (table) => ({
+        ...table,
+        ...(await countRows(supabase, table.table)),
+      })),
+    ),
   ]);
 
   const countWarnings = [profiles, images, captions]
@@ -87,7 +101,7 @@ export default async function AdminDashboardPage() {
         <p className="text-xs uppercase tracking-[0.2em] text-sky-300">Dashboard</p>
         <h2 className="mt-2 text-3xl font-semibold">Admin Overview</h2>
         <p className="mt-3 max-w-3xl text-sm text-slate-300">
-          A simpler dashboard with direct reads from the main admin tables.
+          Direct reads from the core app tables plus a coverage check for the full Domain Model.
         </p>
       </section>
 
@@ -110,6 +124,44 @@ export default async function AdminDashboardPage() {
           {countWarnings.join(" | ")}
         </section>
       ) : null}
+
+      <section className="rounded-3xl border border-white/40 bg-white/85 p-5 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+              Domain Model Coverage
+            </p>
+            <h3 className="mt-2 text-lg font-semibold text-slate-900">
+              Tables Read by Admin
+            </h3>
+          </div>
+          <p className="text-sm text-slate-600">
+            {domainCounts.filter((table) => table.available).length}/{domainCounts.length} tables available
+          </p>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {domainCounts.map((table) => (
+            <Link
+              key={`${table.table}-${table.href}`}
+              href={table.href}
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 transition hover:border-slate-300 hover:bg-white"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{table.label}</p>
+                  <p className="mt-1 truncate text-xs text-slate-500">{table.table}</p>
+                </div>
+                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
+                  {formatNumber(table.value)}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                {table.available ? table.subtitle : "No rows available in this environment"}
+              </p>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-3xl border border-white/40 bg-white/85 p-5 shadow-sm">

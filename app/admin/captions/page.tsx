@@ -105,18 +105,9 @@ export default async function AdminCaptionsPage({ searchParams }: CaptionsPagePr
   }
 
   if (isMissingSchemaError(error)) {
-    return (
-      <main className="space-y-5">
-        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
-          <p className="text-xs uppercase tracking-[0.2em] text-amber-700">Unavailable</p>
-          <h2 className="mt-2 text-2xl font-semibold text-slate-900">Captions</h2>
-          <p className="mt-3 text-sm text-amber-900">
-            This page is disabled because the `captions` table is not present in this
-            project schema.
-          </p>
-        </section>
-      </main>
-    );
+    data = [];
+    error = null;
+    count = 0;
   }
 
   const rows = asRows(data);
