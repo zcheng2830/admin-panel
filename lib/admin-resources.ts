@@ -44,30 +44,6 @@ export const PRIMARY_ADMIN_LINKS: readonly AdminTableLink[] = [
 
 const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
   {
-    slug: "caption-votes",
-    label: "Caption Votes",
-    subtitle: "Read-only",
-    table: "caption_votes",
-    mode: "read",
-    preferredColumns: ["id", "caption_id", "profile_id", "user_id", "vote_value", "created_at"],
-  },
-  {
-    slug: "caption-likes",
-    label: "Caption Likes",
-    subtitle: "Read-only",
-    table: "caption_likes",
-    mode: "read",
-    preferredColumns: ["id", "caption_id", "profile_id", "user_id", "created_at"],
-  },
-  {
-    slug: "caption-saved",
-    label: "Saved Captions",
-    subtitle: "Read-only",
-    table: "caption_saved",
-    mode: "read",
-    preferredColumns: ["id", "caption_id", "profile_id", "user_id", "created_at"],
-  },
-  {
     slug: "reported-captions",
     label: "Reported Captions",
     subtitle: "Read-only",
@@ -97,23 +73,6 @@ const ADMIN_RESOURCES: readonly AdminResourceConfig[] = [
       "created_at",
       "updated_at",
     ],
-  },
-  {
-    slug: "example-captions",
-    label: "Example Captions",
-    subtitle: "Create / read / update / delete",
-    table: "example_captions",
-    mode: "crud",
-    preferredColumns: ["id", "caption", "humor_flavor_id", "created_at", "updated_at"],
-    hiddenColumns: ["created_by_user_id", "updated_by_user_id"],
-  },
-  {
-    slug: "term-types",
-    label: "Term Types",
-    subtitle: "Read-only",
-    table: "term_types",
-    mode: "read",
-    preferredColumns: ["id", "name", "slug", "description", "created_at", "updated_at"],
   },
   {
     slug: "caption-requests",
