@@ -177,23 +177,6 @@ async function listOptionalRows(
   return asRows(data);
 }
 
-function incrementCounter(
-  counters: Record<string, number>,
-  keyValue: unknown,
-) {
-  if (keyValue === null || keyValue === undefined) {
-    return;
-  }
-
-  const key = String(keyValue);
-
-  if (!key) {
-    return;
-  }
-
-  counters[key] = (counters[key] ?? 0) + 1;
-}
-
 function topEntries(
   counters: Record<string, number>,
   keyName: string,
@@ -616,9 +599,6 @@ async function handleGetStats(client: SupabaseClient) {
     publicCaptionsCount,
     privateCaptionsCount,
     captionRows,
-    likeRows,
-    voteRows,
-    savedRows,
     requestRows,
   ] = await Promise.all([
     countOptional(client, "captions", "is_featured", true, warnings),
@@ -630,9 +610,6 @@ async function handleGetStats(client: SupabaseClient) {
       "id, image_id, caption_request_id, created_datetime_utc, created_at, is_public, is_featured",
       warnings,
     ),
-    listOptionalRows(client, "caption_likes", "caption_id", warnings),
-    listOptionalRows(client, "caption_votes", "caption_id, vote_value", warnings),
-    listOptionalRows(client, "caption_saved", "caption_id, profile_id", warnings),
     listOptionalRows(client, "caption_requests", "id", warnings),
   ]);
 
@@ -663,19 +640,8 @@ async function handleGetStats(client: SupabaseClient) {
   }
 
   const likeCounts: Record<string, number> = {};
-  for (const row of likeRows ?? []) {
-    incrementCounter(likeCounts, row.caption_id);
-  }
-
   const voteDistribution: Record<string, number> = {};
-  for (const row of voteRows ?? []) {
-    incrementCounter(voteDistribution, row.vote_value);
-  }
-
   const savedByProfile: Record<string, number> = {};
-  for (const row of savedRows ?? []) {
-    incrementCounter(savedByProfile, row.profile_id);
-  }
 
   return jsonResponse({
     summary: {

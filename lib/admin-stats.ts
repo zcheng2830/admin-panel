@@ -274,20 +274,6 @@ function readImageOwnerId(row: DataRow) {
   return String(row[ownerField]);
 }
 
-function incrementCounter(counters: Record<string, number>, keyValue: unknown) {
-  if (keyValue === null || keyValue === undefined) {
-    return;
-  }
-
-  const key = String(keyValue);
-
-  if (!key) {
-    return;
-  }
-
-  counters[key] = (counters[key] ?? 0) + 1;
-}
-
 function topEntries<T extends string>(
   counters: Record<string, number>,
   keyName: T,
@@ -317,9 +303,6 @@ export async function getAdminDashboardStats(
     images,
     captions,
     authUsers,
-    captionLikes,
-    captionVotes,
-    captionSaved,
     featuredCaptions,
     publicCaptions,
     privateCaptions,
@@ -332,24 +315,6 @@ export async function getAdminDashboardStats(
     fetchOptionalSampleRows(supabase, "images", warnings),
     fetchOptionalSampleRows(supabase, "captions", warnings),
     listAuthUsersForMetrics(supabase, warnings),
-    fetchSampleRows(
-      supabase,
-      "caption_likes",
-      warnings,
-      { optional: true, select: "caption_id" },
-    ),
-    fetchSampleRows(
-      supabase,
-      "caption_votes",
-      warnings,
-      { optional: true, select: "caption_id,vote_value" },
-    ),
-    fetchSampleRows(
-      supabase,
-      "caption_saved",
-      warnings,
-      { optional: true, select: "caption_id,profile_id" },
-    ),
     fetchOptionalCountByColumn(
       supabase,
       "captions",
@@ -539,19 +504,8 @@ export async function getAdminDashboardStats(
   );
 
   const likesByCaption: Record<string, number> = {};
-  for (const row of captionLikes ?? []) {
-    incrementCounter(likesByCaption, row.caption_id);
-  }
-
   const votesByValue: Record<string, number> = {};
-  for (const row of captionVotes ?? []) {
-    incrementCounter(votesByValue, row.vote_value);
-  }
-
   const savesByProfile: Record<string, number> = {};
-  for (const row of captionSaved ?? []) {
-    incrementCounter(savesByProfile, row.profile_id);
-  }
 
   const isPartial =
     totalUsers > profileRows.length ||
