@@ -37,30 +37,16 @@ function parseText(raw: FormDataEntryValue | null) {
   return typeof raw === "string" ? raw.trim() : "";
 }
 
-function parseOptionalNumber(raw: FormDataEntryValue | null) {
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    return null;
-  }
-
-  const parsed = Number(raw);
-
-  if (!Number.isFinite(parsed)) {
-    throw new Error("Numbers must be valid.");
-  }
-
-  return parsed;
-}
-
 function parseCheckbox(raw: FormDataEntryValue | null) {
   return raw === "on";
 }
 
-function parseRequiredFile(raw: FormDataEntryValue | null) {
-  if (!(raw instanceof File) || raw.size === 0) {
-    throw new Error("Image file is required.");
+function parseOptionalFile(raw: FormDataEntryValue | null) {
+  if (raw instanceof File && raw.size > 0) {
+    return raw;
   }
 
-  return raw;
+  return null;
 }
 
 function sanitizeFileName(name: string) {
@@ -122,18 +108,10 @@ async function runUpdateWithFallback(
   }
 }
 
-function buildImagePayload(formData: FormData, options?: { requireUrl?: boolean }) {
-  const url = parseText(formData.get("url"));
-  const title = parseText(formData.get("title"));
+function buildImagePayload(formData: FormData, url: string) {
   const imageDescription = parseText(formData.get("image_description"));
-  const width = parseOptionalNumber(formData.get("width"));
-  const height = parseOptionalNumber(formData.get("height"));
   const isPublic = parseCheckbox(formData.get("is_public"));
   const isCommonUse = parseCheckbox(formData.get("is_common_use"));
-
-  if (options?.requireUrl && !url) {
-    throw new Error("Image URL is required.");
-  }
 
   const payload: Record<string, unknown> = {
     url,
@@ -141,20 +119,8 @@ function buildImagePayload(formData: FormData, options?: { requireUrl?: boolean 
     is_common_use: isCommonUse,
   };
 
-  if (title) {
-    payload.title = title;
-  }
-
   if (imageDescription) {
     payload.image_description = imageDescription;
-  }
-
-  if (width !== null) {
-    payload.width = width;
-  }
-
-  if (height !== null) {
-    payload.height = height;
   }
 
   return payload;
@@ -165,7 +131,30 @@ export async function createImageAction(formData: FormData) {
   let target = "/admin/images?status=created";
 
   try {
-    const payload = buildImagePayload(formData, { requireUrl: true });
+    const file = parseOptionalFile(formData.get("file"));
+    let url = parseText(formData.get("url"));
+
+    if (file) {
+      const storagePath = createStoragePath(file.name);
+      const { error: uploadError } = await supabase.storage
+        .from("images")
+        .upload(storagePath, file, { upsert: false, contentType: file.type || undefined });
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("images").getPublicUrl(storagePath);
+      url = publicUrl;
+    }
+
+    if (!url) {
+      throw new Error("Provide an image URL or upload a file.");
+    }
+
+    const payload = buildImagePayload(formData, url);
 
     await runInsertWithFallback(
       async (nextPayload) => supabase.from("images").insert(nextPayload),
@@ -186,7 +175,13 @@ export async function updateImageAction(formData: FormData) {
 
   try {
     const id = parseId(formData.get("id"));
-    const payload = buildImagePayload(formData, { requireUrl: true });
+    const url = parseText(formData.get("url"));
+
+    if (!url) {
+      throw new Error("Image URL is required.");
+    }
+
+    const payload = buildImagePayload(formData, url);
 
     await runUpdateWithFallback(
       async (nextPayload) => supabase.from("images").update(nextPayload).eq("id", id),
@@ -211,47 +206,6 @@ export async function deleteImageAction(formData: FormData) {
 
     if (error) {
       throw new Error(error.message);
-    }
-
-    revalidateAdmin();
-  } catch (error) {
-    target = errorRedirect(errorMessage(error));
-  }
-
-  redirect(target);
-}
-
-export async function uploadImageAction(formData: FormData) {
-  const { supabase } = await requireSuperadmin();
-  let target = "/admin/images?status=uploaded";
-
-  try {
-    const file = parseRequiredFile(formData.get("file"));
-    const shouldCreateRow = parseCheckbox(formData.get("create_row"));
-    const storagePath = createStoragePath(file.name);
-
-    const { error: uploadError } = await supabase.storage
-      .from("images")
-      .upload(storagePath, file, { upsert: false, contentType: file.type || undefined });
-
-    if (uploadError) {
-      throw new Error(uploadError.message);
-    }
-
-    if (shouldCreateRow) {
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("images").getPublicUrl(storagePath);
-
-      const payload = buildImagePayload(formData);
-      payload.url = publicUrl;
-
-      await runInsertWithFallback(
-        async (nextPayload) => supabase.from("images").insert(nextPayload),
-        payload,
-      );
-
-      target = "/admin/images?status=uploaded_created";
     }
 
     revalidateAdmin();

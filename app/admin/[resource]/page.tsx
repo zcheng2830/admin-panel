@@ -249,7 +249,7 @@ export default async function AdminResourcePage({ params, searchParams }: Resour
           <section className="space-y-4">
             {rows.length === 0 ? (
               <div className="rounded-2xl border border-white/40 bg-white/80 p-6 text-sm text-slate-600 shadow-sm">
-                No rows returned.
+                No records yet.
               </div>
             ) : (
               rows.map((row, index) => {

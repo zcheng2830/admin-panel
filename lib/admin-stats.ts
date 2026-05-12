@@ -473,7 +473,7 @@ export async function getAdminDashboardStats(
       at: readTimestamp(image),
       id: String(image.id ?? "unknown-image"),
       label:
-        pickFirstString(image, ["title", "storage_path", "url"]) ??
+        pickFirstString(image, ["title", "url"]) ??
         String(image.id ?? "image"),
       type: "image" as const,
     })),

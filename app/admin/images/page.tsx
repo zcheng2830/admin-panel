@@ -6,7 +6,6 @@ import {
   createImageAction,
   deleteImageAction,
   updateImageAction,
-  uploadImageAction,
 } from "./actions";
 
 type ImagesPageProps = {
@@ -28,14 +27,6 @@ function feedback(status?: string, message?: string) {
 
   if (status === "deleted") {
     return { tone: "success", text: "Image row deleted." };
-  }
-
-  if (status === "uploaded") {
-    return { tone: "success", text: "Image uploaded." };
-  }
-
-  if (status === "uploaded_created") {
-    return { tone: "success", text: "Image uploaded and row created." };
   }
 
   return { tone: "error", text: message ?? "Image action failed." };
@@ -68,20 +59,6 @@ function previewUrl(row: Record<string, unknown>) {
 
 function textValue(row: Record<string, unknown>, keys: string[]) {
   return pickFirstString(row, keys) ?? "";
-}
-
-function numberValue(row: Record<string, unknown>, key: string) {
-  const value = row[key];
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value;
-  }
-
-  return "";
 }
 
 function booleanValue(row: Record<string, unknown>, key: string) {
@@ -129,7 +106,8 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Images</p>
         <h2 className="mt-2 text-2xl font-semibold text-slate-900">Image Management</h2>
         <p className="mt-3 text-sm text-slate-600">
-          Create, upload, update, and delete images with image-specific fields only.
+          Create images by uploading a file or entering a URL. Uploaded files are saved to
+          storage first, then the public URL is stored in the images table.
         </p>
         {error ? (
           <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -159,99 +137,29 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
       />
 
       <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900">Upload New Image</h3>
+        <h3 className="text-lg font-semibold text-slate-900">Create Image</h3>
         <p className="mt-2 text-sm text-slate-600">
-          Upload a file, then optionally create an `images` row using the public URL.
+          Upload a file or paste an image URL. If you upload a file, the app stores the
+          generated public URL in Supabase.
         </p>
-        <form action={uploadImageAction} encType="multipart/form-data" className="mt-4 grid gap-4 lg:grid-cols-2">
+        <form action={createImageAction} encType="multipart/form-data" className="mt-4 grid gap-4 lg:grid-cols-2">
           <label className="text-sm text-slate-700">
             Upload image
             <input
               type="file"
               name="file"
               accept="image/*"
-              required
               className="mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800"
             />
           </label>
           <label className="text-sm text-slate-700">
-            Title
-            <input
-              name="title"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
-              placeholder="Optional title"
-            />
-          </label>
-          <label className="text-sm text-slate-700 lg:col-span-2">
-            Image description
-            <textarea
-              name="image_description"
-              rows={3}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
-              placeholder="Optional description"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            Width
-            <input
-              name="width"
-              type="number"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
-              placeholder="Optional width"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            Height
-            <input
-              name="height"
-              type="number"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
-              placeholder="Optional height"
-            />
-          </label>
-          <div className="flex flex-wrap gap-4 text-sm text-slate-700 lg:col-span-2">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" name="create_row" defaultChecked className="size-4" />
-              Also create an `images` row
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" name="is_public" className="size-4" />
-              Public
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" name="is_common_use" className="size-4" />
-              Common use
-            </label>
-          </div>
-          <button
-            type="submit"
-            className="rounded-xl bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            Upload image
-          </button>
-        </form>
-      </section>
-
-      <section className="rounded-3xl border border-white/40 bg-white/80 p-5 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900">Create Image from URL</h3>
-        <form action={createImageAction} className="mt-4 grid gap-4 lg:grid-cols-2">
-          <label className="text-sm text-slate-700">
             Image URL
             <input
               name="url"
-              required
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
               placeholder="https://..."
             />
           </label>
-          <label className="text-sm text-slate-700">
-            Title
-            <input
-              name="title"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
-              placeholder="Optional title"
-            />
-          </label>
           <label className="text-sm text-slate-700 lg:col-span-2">
             Image description
             <textarea
@@ -259,22 +167,6 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
               rows={3}
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
               placeholder="Optional description"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            Width
-            <input
-              name="width"
-              type="number"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
-            />
-          </label>
-          <label className="text-sm text-slate-700">
-            Height
-            <input
-              name="height"
-              type="number"
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
             />
           </label>
           <div className="flex flex-wrap gap-4 text-sm text-slate-700 lg:col-span-2">
@@ -346,38 +238,12 @@ export default async function AdminImagesPage({ searchParams }: ImagesPageProps)
                               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
                             />
                           </label>
-                          <label className="text-sm text-slate-700">
-                            Title
-                            <input
-                              name="title"
-                              defaultValue={textValue(row, ["title"])}
-                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
-                            />
-                          </label>
                           <label className="text-sm text-slate-700 md:col-span-2">
                             Image description
                             <textarea
                               name="image_description"
                               rows={3}
                               defaultValue={textValue(row, ["image_description", "description"])}
-                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
-                            />
-                          </label>
-                          <label className="text-sm text-slate-700">
-                            Width
-                            <input
-                              name="width"
-                              type="number"
-                              defaultValue={numberValue(row, "width")}
-                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
-                            />
-                          </label>
-                          <label className="text-sm text-slate-700">
-                            Height
-                            <input
-                              name="height"
-                              type="number"
-                              defaultValue={numberValue(row, "height")}
                               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800"
                             />
                           </label>

@@ -198,7 +198,6 @@ export async function GET(request: Request) {
   const rangeTo = offset + limit - 1;
   const search = sanitizeSearch(searchParams.get("search"));
   const userId = searchParams.get("user_id")?.trim();
-  const bucket = searchParams.get("bucket")?.trim() || "images";
 
   let query = auth.context.supabase
     .from("images")
@@ -237,31 +236,12 @@ export async function GET(request: Request) {
   }
 
   const rows = asRows(data);
-  const withSignedUrls = await Promise.all(
-    rows.map(async (row) => {
-      const storagePath =
-        typeof row.storage_path === "string" ? row.storage_path.trim() : "";
-
-      if (!storagePath) {
-        return row;
-      }
-
-      const { data: signed, error: signedError } = await auth.context.supabase.storage
-        .from(bucket)
-        .createSignedUrl(storagePath, 30 * 60);
-
-      return {
-        ...row,
-        signed_url: signedError ? null : signed.signedUrl,
-      };
-    }),
-  );
 
   return NextResponse.json({
-    images: withSignedUrls,
+    images: rows,
     limit,
     offset,
-    totalCount: count ?? withSignedUrls.length,
+    totalCount: count ?? rows.length,
   });
 }
 
@@ -348,7 +328,6 @@ export async function POST(request: Request) {
         bucket,
         image,
         signed_url: signed?.signedUrl ?? null,
-        storage_path: storagePath,
       },
       { status: 201 },
     );
